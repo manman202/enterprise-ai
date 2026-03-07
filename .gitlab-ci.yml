@@ -9,6 +9,9 @@ stages:
 variables:
   DOCKER_DRIVER: overlay2
   DOCKER_TLS_CERTDIR: ""
+  REGISTRY: $CI_REGISTRY
+  BACKEND_IMAGE: $CI_REGISTRY_IMAGE/backend
+  FRONTEND_IMAGE: $CI_REGISTRY_IMAGE/frontend
 
 # ─── LINT ─────────────────────────────────────────────────────
 lint:backend:
@@ -34,6 +37,90 @@ test:backend:
     - pip install pytest pytest-asyncio httpx --quiet
     - cd backend && pytest tests/ -v
   allow_failure: true
+
+# ─── BUILD ────────────────────────────────────────────────────
+.build_template: &build_template
+  stage: build
+  image: docker:26
+  services:
+    - docker:26-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+build:backend:
+  <<: *build_template
+  script:
+    - docker pull $BACKEND_IMAGE:latest || true
+    - docker build
+        --cache-from $BACKEND_IMAGE:latest
+        --tag $BACKEND_IMAGE:$CI_COMMIT_SHA
+        --tag $BACKEND_IMAGE:latest
+        backend/
+    - docker push $BACKEND_IMAGE:$CI_COMMIT_SHA
+    - docker push $BACKEND_IMAGE:latest
+  rules:
+    - changes: [backend/**/*]
+    - if: $CI_COMMIT_BRANCH == "main"
+
+build:frontend:
+  <<: *build_template
+  script:
+    - docker pull $FRONTEND_IMAGE:latest || true
+    - docker build
+        --cache-from $FRONTEND_IMAGE:latest
+        --tag $FRONTEND_IMAGE:$CI_COMMIT_SHA
+        --tag $FRONTEND_IMAGE:latest
+        frontend/
+    - docker push $FRONTEND_IMAGE:$CI_COMMIT_SHA
+    - docker push $FRONTEND_IMAGE:latest
+  rules:
+    - changes: [frontend/**/*]
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ─── DEPLOY DEV ───────────────────────────────────────────────
+.deploy_template: &deploy_template
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$DEPLOY_SSH_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts
+
+deploy:dev:
+  <<: *deploy_template
+  stage: deploy-dev
+  environment:
+    name: dev
+    url: http://$DEPLOY_HOST:3000
+  script:
+    - ssh $DEPLOY_USER@$DEPLOY_HOST "
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        docker pull $BACKEND_IMAGE:$CI_COMMIT_SHA &&
+        docker pull $FRONTEND_IMAGE:$CI_COMMIT_SHA &&
+        cd /opt/aiyedun/enterprise-ai/infra &&
+        BACKEND_TAG=$CI_COMMIT_SHA FRONTEND_TAG=$CI_COMMIT_SHA docker compose up -d --no-build backend frontend
+      "
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+deploy:prod:
+  <<: *deploy_template
+  stage: deploy-prod
+  environment:
+    name: production
+    url: http://$DEPLOY_HOST_PROD:3000
+  script:
+    - ssh $DEPLOY_USER@$DEPLOY_HOST_PROD "
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        docker pull $BACKEND_IMAGE:$CI_COMMIT_SHA &&
+        docker pull $FRONTEND_IMAGE:$CI_COMMIT_SHA &&
+        cd /opt/aiyedun/enterprise-ai/infra &&
+        BACKEND_TAG=$CI_COMMIT_SHA FRONTEND_TAG=$CI_COMMIT_SHA docker compose up -d --no-build backend frontend
+      "
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  when: manual
 
 # ─── MIRROR TO GITHUB ─────────────────────────────────────────
 mirror:github:
