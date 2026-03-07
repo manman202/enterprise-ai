@@ -6,7 +6,7 @@ import App from './App'
 vi.mock('@/api/client', () => ({ api: { get: vi.fn().mockReturnValue(new Promise(() => {})) } }))
 
 describe('App', () => {
-  it('renders the nav brand and Health link', () => {
+  it('renders the sidebar brand and Health link', () => {
     render(
       <MemoryRouter>
         <App />

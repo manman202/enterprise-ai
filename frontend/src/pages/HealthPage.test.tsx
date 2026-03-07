@@ -38,7 +38,7 @@ describe('HealthPage', () => {
     await waitFor(() => expect(screen.queryByText('Checking...')).not.toBeInTheDocument())
 
     const degraded = screen.getByText('connection refused')
-    expect(degraded).toHaveClass('text-red-400')
+    expect(degraded.closest('span')).toHaveClass('text-red-400')
   })
 
   it('shows an error message when the request fails', async () => {

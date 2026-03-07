@@ -1,22 +1,14 @@
-import { Routes, Route, NavLink } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
+import { Sidebar } from '@/components/layout/Sidebar'
 import HealthPage from '@/pages/HealthPage'
+
+const NAV_ITEMS = [{ label: 'Health', to: '/' }]
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
-      <nav className="border-b border-gray-800 px-6 py-3 flex items-center gap-6">
-        <span className="font-semibold tracking-wide">Aiyedun</span>
-        <NavLink
-          to="/"
-          className={({ isActive }) =>
-            isActive ? 'text-blue-400 text-sm' : 'text-gray-400 text-sm hover:text-gray-200'
-          }
-        >
-          Health
-        </NavLink>
-      </nav>
-
-      <main className="p-6">
+    <div className="flex min-h-screen bg-gray-950 text-gray-100">
+      <Sidebar items={NAV_ITEMS} />
+      <main className="flex-1 overflow-y-auto p-6">
         <Routes>
           <Route path="/" element={<HealthPage />} />
         </Routes>

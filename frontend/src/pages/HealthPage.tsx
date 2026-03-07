@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/api/client'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { Badge } from '@/components/ui/Badge'
+import { Card } from '@/components/ui/Card'
 
 type HealthStatus = {
   api: string
@@ -7,9 +10,6 @@ type HealthStatus = {
   chromadb: string
   ollama: string
 }
-
-const statusColor = (s: string) =>
-  s === 'ok' ? 'text-green-400' : 'text-red-400'
 
 export default function HealthPage() {
   const [status, setStatus] = useState<HealthStatus | null>(null)
@@ -26,22 +26,26 @@ export default function HealthPage() {
 
   return (
     <div className="max-w-md">
-      <h1 className="text-xl font-semibold mb-4">System Health</h1>
+      <PageHeader title="System Health" />
 
       {loading && <p className="text-gray-400 text-sm">Checking...</p>}
       {error && <p className="text-red-400 text-sm">{error}</p>}
 
       {status && (
-        <table className="w-full text-sm border-separate border-spacing-y-1">
-          <tbody>
-            {Object.entries(status).map(([service, value]) => (
-              <tr key={service}>
-                <td className="text-gray-400 capitalize pr-8">{service}</td>
-                <td className={statusColor(value)}>{value}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Card>
+          <table className="w-full text-sm border-separate border-spacing-y-1.5">
+            <tbody>
+              {Object.entries(status).map(([service, value]) => (
+                <tr key={service}>
+                  <td className="text-gray-400 capitalize pr-8">{service}</td>
+                  <td>
+                    <Badge variant={value === 'ok' ? 'ok' : 'error'}>{value}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
       )}
     </div>
   )
