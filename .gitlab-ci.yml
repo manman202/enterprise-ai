@@ -38,6 +38,21 @@ test:backend:
     - cd backend && pytest tests/ -v
   allow_failure: true
 
+test:frontend:
+  stage: test
+  image: node:20-alpine
+  script:
+    - cd frontend && npm install --silent
+    - npm test
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: frontend/coverage/cobertura-coverage.xml
+    paths:
+      - frontend/coverage/
+    expire_in: 7 days
+
 # ─── BUILD ────────────────────────────────────────────────────
 .build_template: &build_template
   stage: build
