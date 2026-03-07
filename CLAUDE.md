@@ -46,9 +46,50 @@ Pipeline stages: `lint` → `test` → `build` → `deploy-dev` → `deploy-prod
 - The `mirror:github` job pushes `main` and `develop` branches to GitHub using the `GITHUB_TOKEN` CI variable.
 - All current jobs are marked `allow_failure: true` as the backend/frontend code is not yet scaffolded.
 
-## Repository Status
+## Backend Development
 
-The `backend/` and `frontend/` directories do not yet exist — the project is in its initial scaffolding phase. When adding them:
-- Backend goes in `backend/` (Python 3.12, FastAPI)
-- Frontend goes in `frontend/` (React 18 + TypeScript + Tailwind CSS)
-- The GitLab CI lint jobs (`cd backend` / frontend checks) will need to be updated from placeholders to real commands once code exists.
+Located in `backend/`. FastAPI app entry point: `backend/app/main.py`.
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# Run dev server (hot reload)
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Lint
+flake8 app --max-line-length=120
+
+# Tests
+pytest tests/ -v
+
+# Single test
+pytest tests/path/to/test_file.py::test_name -v
+```
+
+### Backend structure
+
+```
+backend/
+  app/
+    main.py          # FastAPI app + router registration
+    core/config.py   # Pydantic Settings — all env vars loaded here
+    api/v1/
+      router.py      # Mounts all v1 endpoint routers under /api/v1
+      endpoints/     # One file per domain (health, chat, docs, ...)
+    db/
+      postgres.py    # SQLAlchemy async engine + Base + get_db() dependency
+      chroma.py      # ChromaDB async client singleton
+      ollama.py      # httpx wrapper + generate() helper for Ollama
+    models/          # SQLAlchemy ORM models (import Base from db.postgres)
+    schemas/         # Pydantic request/response schemas
+```
+
+All configuration is read from environment variables (see `backend/.env.example`). Copy it to `backend/.env` for local development.
+
+The `/api/v1/health` endpoint checks connectivity to all three backing services (Postgres, ChromaDB, Ollama).
+
+### Frontend
+
+`frontend/` does not yet exist. Stack: React 18 + TypeScript + Tailwind CSS.
