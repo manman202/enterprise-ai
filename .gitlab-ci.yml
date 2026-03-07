@@ -22,8 +22,8 @@ lint:frontend:
   stage: lint
   image: node:20-alpine
   script:
-    - echo "→ Frontend lint OK (no files yet — placeholder)"
-  allow_failure: true
+    - cd frontend && npm install --silent
+    - npm run lint
 
 # ─── TEST ─────────────────────────────────────────────────────
 test:backend:

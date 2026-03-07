@@ -90,6 +90,39 @@ All configuration is read from environment variables (see `backend/.env.example`
 
 The `/api/v1/health` endpoint checks connectivity to all three backing services (Postgres, ChromaDB, Ollama).
 
-### Frontend
+## Frontend Development
 
-`frontend/` does not yet exist. Stack: React 18 + TypeScript + Tailwind CSS.
+Located in `frontend/`. Vite + React 18 + TypeScript + Tailwind CSS.
+
+```bash
+cd frontend
+npm install
+
+# Dev server (port 3000, proxies /api → localhost:8000)
+npm run dev
+
+# Type-check + build
+npm run build
+
+# Lint
+npm run lint
+```
+
+### Frontend structure
+
+```
+frontend/
+  src/
+    main.tsx        # Entry — BrowserRouter wraps App
+    App.tsx         # Route definitions + nav shell
+    index.css       # Tailwind directives
+    api/client.ts   # Typed fetch wrapper (get/post against /api/v1)
+    pages/          # One file per route
+    components/     # Shared UI components
+  index.html
+  vite.config.ts    # Aliases @/ → src/, proxies /api to backend
+  nginx.conf        # Production: SPA fallback + /api proxy to aiyedun-backend:8000
+  Dockerfile        # Multi-stage: node build → nginx serve
+```
+
+In dev, Vite proxies `/api` to `http://localhost:8000` so no CORS config is needed. In production (Docker), nginx proxies `/api` to the `aiyedun-backend` container.
