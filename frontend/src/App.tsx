@@ -1,10 +1,12 @@
 import { Routes, Route } from 'react-router-dom'
 import { Sidebar } from '@/components/layout/Sidebar'
 import ChatPage from '@/pages/ChatPage'
+import DocumentsPage from '@/pages/DocumentsPage'
 import HealthPage from '@/pages/HealthPage'
 
 const NAV_ITEMS = [
   { label: 'Chat', to: '/chat' },
+  { label: 'Documents', to: '/documents' },
   { label: 'Health', to: '/' },
 ]
 
@@ -15,6 +17,7 @@ export default function App() {
       <main className="flex-1 overflow-y-auto p-6">
         <Routes>
           <Route path="/chat" element={<ChatPage />} />
+          <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/" element={<HealthPage />} />
         </Routes>
       </main>
