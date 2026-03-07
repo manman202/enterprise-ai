@@ -1,0 +1,62 @@
+version: '3.8'
+
+networks:
+  aiyedun-internal:
+    driver: bridge
+  aiyedun-web:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  chroma_data:
+  ollama_data:
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: aiyedun-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: aiyedun
+      POSTGRES_USER: aiyedun_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-AiyedunDB2026!}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - aiyedun-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiyedun_user -d aiyedun"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: aiyedun-chromadb
+    restart: always
+    volumes:
+      - chroma_data:/chroma/chroma
+    networks:
+      - aiyedun-internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aiyedun-ollama
+    restart: always
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - aiyedun-internal
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
