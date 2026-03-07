@@ -90,6 +90,25 @@ All configuration is read from environment variables (see `backend/.env.example`
 
 The `/api/v1/health` endpoint checks connectivity to all three backing services (Postgres, ChromaDB, Ollama).
 
+### Database migrations (Alembic)
+
+```bash
+cd backend
+
+# Apply all pending migrations
+alembic upgrade head
+
+# Generate a new migration from model changes
+alembic revision --autogenerate -m "description"
+
+# Downgrade one step
+alembic downgrade -1
+```
+
+`alembic/env.py` imports `Base` from `app.db.postgres` and all models via `import app.models`. Add new model modules to that import so autogenerate detects them. The database URL is read from `settings.database_url` — no hardcoded URL in `alembic.ini`.
+
+In Docker, `entrypoint.sh` runs `alembic upgrade head` automatically before starting uvicorn.
+
 ## Frontend Development
 
 Located in `frontend/`. Vite + React 18 + TypeScript + Tailwind CSS.
