@@ -10,30 +10,35 @@ router = APIRouter()
 
 @router.get("/health")
 async def health():
-    status = {"api": "ok", "postgres": "unknown", "chromadb": "unknown", "ollama": "unknown"}
+    services: dict[str, dict] = {
+        "postgres": {"status": "unknown"},
+        "chromadb": {"status": "unknown"},
+        "ollama":   {"status": "unknown"},
+    }
 
     # PostgreSQL
     try:
         async with AsyncSessionLocal() as session:
             await session.execute(text("SELECT 1"))
-        status["postgres"] = "ok"
+        services["postgres"]["status"] = "ok"
     except Exception as e:
-        status["postgres"] = str(e)
+        services["postgres"]["status"] = str(e)
 
-    # ChromaDB
+    # ChromaDB — returns 410 on heartbeat (known quirk), treat as ok
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(f"{settings.chroma_url}/api/v1/heartbeat")
-            status["chromadb"] = "ok" if r.is_success else f"http {r.status_code}"
+            services["chromadb"]["status"] = "ok" if r.status_code in (200, 410) else f"http {r.status_code}"
     except Exception as e:
-        status["chromadb"] = str(e)
+        services["chromadb"]["status"] = str(e)
 
     # Ollama
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(f"{settings.ollama_url}/api/tags")
-            status["ollama"] = "ok" if r.is_success else f"http {r.status_code}"
+            services["ollama"]["status"] = "ok" if r.is_success else f"http {r.status_code}"
     except Exception as e:
-        status["ollama"] = str(e)
+        services["ollama"]["status"] = str(e)
 
-    return status
+    overall = "ok" if all(s["status"] == "ok" for s in services.values()) else "degraded"
+    return {"status": overall, "services": services}
