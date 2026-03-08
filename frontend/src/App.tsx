@@ -6,6 +6,7 @@ import ChatPage from '@/pages/ChatPage'
 import DocumentsPage from '@/pages/DocumentsPage'
 import HealthPage from '@/pages/HealthPage'
 import LoginPage from '@/pages/LoginPage'
+import RegisterPage from '@/pages/RegisterPage'
 import SearchPage from '@/pages/SearchPage'
 
 const NAV_ITEMS = [
@@ -36,6 +37,7 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
         <Route
           path="/*"
           element={

@@ -1,17 +1,24 @@
 import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { LoginForm } from '@/components/auth/LoginForm'
+import { authApi } from '@/api/auth'
+import { RegisterForm } from '@/components/auth/RegisterForm'
 import { useAuth } from '@/contexts/AuthContext'
 
-export default function LoginPage() {
-  const { login, user } = useAuth()
+export default function RegisterPage() {
+  const { user, login } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
     if (user) navigate('/chat', { replace: true })
   }, [user, navigate])
 
-  async function handleLogin(username: string, password: string) {
+  async function handleRegister(
+    username: string,
+    email: string,
+    password: string,
+    confirmPassword: string,
+  ) {
+    await authApi.register(username, email, password, confirmPassword)
     await login(username, password)
     navigate('/chat', { replace: true })
   }
@@ -21,13 +28,13 @@ export default function LoginPage() {
       <div className="flex flex-col items-center gap-8">
         <div className="text-center">
           <h1 className="text-2xl font-semibold text-gray-100">Aiyedun</h1>
-          <p className="mt-1 text-sm text-gray-500">Enterprise AI Knowledge Staff</p>
+          <p className="mt-1 text-sm text-gray-500">Create your account</p>
         </div>
-        <LoginForm onSubmit={handleLogin} />
+        <RegisterForm onSubmit={handleRegister} />
         <p className="text-sm text-gray-500">
-          No account?{' '}
-          <Link to="/register" className="text-blue-400 hover:text-blue-300">
-            Create one
+          Already have an account?{' '}
+          <Link to="/login" className="text-blue-400 hover:text-blue-300">
+            Sign in
           </Link>
         </p>
       </div>

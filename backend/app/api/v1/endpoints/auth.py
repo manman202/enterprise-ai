@@ -3,10 +3,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
-from app.core.security import create_access_token, verify_password
+from app.core.security import create_access_token, hash_password, verify_password
 from app.db.postgres import get_db
 from app.models.user import User
-from app.schemas.auth import LoginRequest, TokenResponse, UserOut
+from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserOut
 
 router = APIRouter(prefix="/auth")
 
@@ -23,6 +23,25 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
 
     return TokenResponse(access_token=create_access_token(user.id))
+
+
+@router.post("/register", response_model=UserOut, status_code=201)
+async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    existing = await db.execute(
+        select(User).where((User.username == body.username) | (User.email == body.email))
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username or email already taken")
+
+    user = User(
+        username=body.username,
+        email=body.email,
+        hashed_password=hash_password(body.password),
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
 
 
 @router.get("/me", response_model=UserOut)

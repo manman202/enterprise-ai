@@ -16,5 +16,8 @@ export const authApi = {
   login: (username: string, password: string) =>
     api.post<TokenResponse>('/auth/login', { username, password }),
 
+  register: (username: string, email: string, password: string, confirm_password: string) =>
+    api.post<AuthUser>('/auth/register', { username, email, password, confirm_password }),
+
   me: () => api.get<AuthUser>('/auth/me'),
 }

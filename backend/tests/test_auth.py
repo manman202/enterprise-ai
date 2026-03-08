@@ -72,6 +72,76 @@ async def test_login_inactive_user(client: AsyncClient):
     assert response.status_code == 403
 
 
+# ─── REGISTER ─────────────────────────────────────────────────────────────────
+
+REGISTER_PAYLOAD = {
+    "username": "charlie",
+    "email": "charlie@example.com",
+    "password": "Password1",
+    "confirm_password": "Password1",
+}
+
+
+async def test_register_creates_user(client: AsyncClient):
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=result)
+    session.add = MagicMock()
+    session.commit = AsyncMock()
+    session.refresh = AsyncMock()
+
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=session)
+    cm.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.db.postgres.AsyncSessionLocal", return_value=cm):
+        response = await client.post("/api/v1/auth/register", json=REGISTER_PAYLOAD)
+
+    assert response.status_code == 201
+    session.add.assert_called_once()
+    session.commit.assert_awaited_once()
+
+
+async def test_register_conflict_on_duplicate(client: AsyncClient):
+    with _db_patch(user=ACTIVE_USER):
+        response = await client.post("/api/v1/auth/register", json=REGISTER_PAYLOAD)
+
+    assert response.status_code == 409
+
+
+async def test_register_rejects_short_password(client: AsyncClient):
+    response = await client.post(
+        "/api/v1/auth/register",
+        json={**REGISTER_PAYLOAD, "password": "short", "confirm_password": "short"},
+    )
+    assert response.status_code == 422
+
+
+async def test_register_rejects_mismatched_passwords(client: AsyncClient):
+    response = await client.post(
+        "/api/v1/auth/register",
+        json={**REGISTER_PAYLOAD, "confirm_password": "Different1"},
+    )
+    assert response.status_code == 422
+
+
+async def test_register_rejects_short_username(client: AsyncClient):
+    response = await client.post(
+        "/api/v1/auth/register",
+        json={**REGISTER_PAYLOAD, "username": "ab"},
+    )
+    assert response.status_code == 422
+
+
+async def test_register_rejects_invalid_email(client: AsyncClient):
+    response = await client.post(
+        "/api/v1/auth/register",
+        json={**REGISTER_PAYLOAD, "email": "notanemail"},
+    )
+    assert response.status_code == 422
+
+
 # ─── ME ───────────────────────────────────────────────────────────────────────
 
 async def test_me_returns_current_user(client: AsyncClient):
