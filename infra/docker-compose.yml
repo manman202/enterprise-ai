@@ -91,6 +91,8 @@ services:
       OLLAMA_HOST:       aiyedun-ollama
       OLLAMA_PORT:       11434
       OLLAMA_MODEL:      ${OLLAMA_MODEL:-mistral}
+    ports:
+      - "127.0.0.1:8000:8000"
     networks:
       - aiyedun-internal
       - aiyedun-web
@@ -144,7 +146,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "${ADMIN_PORT:-4000}:4000"
+      - "127.0.0.1:3001:4000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:4000"]
       interval: 15s

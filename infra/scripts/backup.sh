@@ -10,8 +10,8 @@
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
-BACKUP_DIR="/var/backups/aiyedun"
-LOG_FILE="/var/log/aiyedun-backup.log"
+BACKUP_DIR="/opt/aiyedun/backups"
+LOG_FILE="/opt/aiyedun/backups/backup.log"
 RETENTION_DAYS=7
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 DATE_LABEL=$(date +"%Y-%m-%d")
