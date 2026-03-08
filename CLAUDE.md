@@ -6,12 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Aiyedun is a fully self-hosted, offline-first enterprise AI knowledge platform. LAN-only, Active Directory-governed, zero internet dependency (V1).
 
-**Planned stack:**
+**Stack:**
 - **LLM:** Ollama + Mistral 7B (local, offline)
 - **Vector DB:** ChromaDB
 - **Database:** PostgreSQL 16
 - **Backend:** FastAPI (Python 3.12)
-- **Frontend:** React 18 + TypeScript + Tailwind CSS
+- **User Portal:** React 18 + TypeScript + Tailwind CSS (`frontend/`)
+- **Admin Panel:** React 18 + TypeScript + Tailwind CSS (`admin/`)
 - **CI/CD:** GitLab CE (primary) mirrored to GitHub
 
 ## Infrastructure
@@ -44,7 +45,7 @@ Pipeline stages: `lint` → `test` → `build` → `deploy-dev` → `deploy-prod
 - Backend lint uses `flake8` on the `backend/` directory.
 - Frontend lint runs against the `frontend/` directory (Node 20).
 - The `mirror:github` job pushes `main` and `develop` branches to GitHub using the `GITHUB_TOKEN` CI variable.
-- All current jobs are marked `allow_failure: true` as the backend/frontend code is not yet scaffolded.
+- All current jobs are marked `allow_failure: true`.
 
 ## Backend Development
 
@@ -145,3 +146,52 @@ frontend/
 ```
 
 In dev, Vite proxies `/api` to `http://localhost:8000` so no CORS config is needed. In production (Docker), nginx proxies `/api` to the `aiyedun-backend` container.
+
+## Admin Panel Development
+
+Located in `admin/`. Standalone Vite + React 18 + TypeScript + Tailwind CSS app. Restricted to users with `is_admin = true`. Runs on port **4000** (dev and production).
+
+```bash
+cd admin
+npm install
+
+# Dev server (port 4000, proxies /api → localhost:8000)
+npm run dev
+
+# Type-check + build
+npm run build
+
+# Lint
+npm run lint
+```
+
+### Admin panel structure
+
+```
+admin/
+  src/
+    main.tsx              # Entry — BrowserRouter wraps App
+    App.tsx               # Routes: /login, /dashboard, /users, /documents
+    index.css             # Tailwind directives
+    contexts/
+      AuthContext.tsx     # Auth state; login() enforces is_admin check
+    api/
+      client.ts           # Typed fetch wrapper (TOKEN_KEY = aiyedun_admin_token)
+      auth.ts             # login(), me() — AdminUser type
+      admin.ts            # adminApi: listUsers, updateUser, deleteUser, listDocuments
+      health.ts           # healthApi.check()
+    pages/
+      LoginPage.tsx       # Admin login (no registration link)
+      DashboardPage.tsx   # Service health + user/document counts
+      UsersPage.tsx       # Full user management table
+      DocumentsPage.tsx   # Document list (read-only)
+    components/
+      ui/                 # Button, Badge, Card, Input, Spinner
+      layout/             # Sidebar (with sign-out), PageHeader
+  index.html
+  vite.config.ts          # Aliases @/ → src/, proxies /api to backend
+  nginx.conf              # Production: SPA fallback + /api proxy, port 4000
+  Dockerfile              # Multi-stage: node build → nginx serve
+```
+
+The `AdminGuard` component in `App.tsx` redirects unauthenticated users to `/login`. The `login()` function in `AuthContext` rejects non-admin accounts with a clear error message before storing the token.
