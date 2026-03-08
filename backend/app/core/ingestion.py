@@ -9,20 +9,20 @@ import os
 import re
 from datetime import datetime
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.embeddings import embed_batch
 from app.db.chroma import add_document_chunks
 from app.models.document import Document
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 # Chunking configuration
-CHUNK_SIZE = 500     # Target characters per chunk
-CHUNK_OVERLAP = 50   # Characters shared between adjacent chunks
+CHUNK_SIZE = 500  # Target characters per chunk
+CHUNK_OVERLAP = 50  # Characters shared between adjacent chunks
 
 
 # ── Text Extraction ────────────────────────────────────────────────────────────
+
 
 def extract_text_from_txt(filepath: str) -> str:
     """Read plain text file."""
@@ -34,6 +34,7 @@ def extract_text_from_pdf(filepath: str) -> str:
     """Extract text from PDF using pypdf."""
     try:
         from pypdf import PdfReader  # type: ignore[import]
+
         reader = PdfReader(filepath)
         pages = []
         for page in reader.pages:
@@ -53,6 +54,7 @@ def extract_text_from_docx(filepath: str) -> str:
     """Extract text from DOCX using python-docx."""
     try:
         from docx import Document as DocxDocument  # type: ignore[import]
+
         doc = DocxDocument(filepath)
         paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
         return "\n\n".join(paragraphs)
@@ -68,6 +70,7 @@ def extract_text_from_xlsx(filepath: str) -> str:
     """Extract text from XLSX — each cell on its own line, sheets separated."""
     try:
         import openpyxl  # type: ignore[import]
+
         wb = openpyxl.load_workbook(filepath, read_only=True, data_only=True)
         lines = []
         for sheet_name in wb.sheetnames:
@@ -109,7 +112,10 @@ def extract_text(filepath: str) -> str:
 
 # ── Chunking ───────────────────────────────────────────────────────────────────
 
-def chunk_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
+
+def chunk_text(
+    text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP
+) -> list[str]:
     """
     Split text into overlapping chunks on sentence/paragraph boundaries.
     Preserves semantic context across chunk boundaries via overlap.
@@ -163,12 +169,14 @@ def chunk_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) 
 
 # ── MD5 hash ───────────────────────────────────────────────────────────────────
 
+
 def file_md5(content: bytes) -> str:
     """Compute MD5 hash of file content bytes."""
     return hashlib.md5(content).hexdigest()
 
 
 # ── Full Ingestion Pipeline ────────────────────────────────────────────────────
+
 
 async def ingest_document(
     doc: Document,
@@ -196,6 +204,7 @@ async def ingest_document(
         # Step 1: extract text
         # Write to a temp file if content is in memory (avoid holding large bytes)
         import tempfile
+
         ext = os.path.splitext(doc.filename)[1].lower()
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
             tmp.write(content)
@@ -233,7 +242,9 @@ async def ingest_document(
         doc.error_message = None
         logger.info(
             "Document '%s' ingested: %d chunks from %d chars",
-            doc.filename, len(chunks), len(text),
+            doc.filename,
+            len(chunks),
+            len(text),
         )
 
     except Exception as exc:  # noqa: BLE001

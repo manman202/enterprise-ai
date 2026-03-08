@@ -6,10 +6,9 @@ Each conversation belongs to one user and contains many messages.
 import uuid
 from datetime import datetime
 
+from app.db.postgres import Base
 from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.db.postgres import Base
 
 
 class Conversation(Base):
@@ -26,7 +25,9 @@ class Conversation(Base):
     )
 
     # Display title — auto-generated from first message (first 60 chars)
-    title: Mapped[str] = mapped_column(String, default="New conversation", nullable=False)
+    title: Mapped[str] = mapped_column(
+        String, default="New conversation", nullable=False
+    )
 
     # Denormalized count for quick display in sidebar (updated on message insert)
     message_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -40,9 +41,12 @@ class Conversation(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="conversations")  # noqa: F821
+    user: Mapped["User"] = relationship(
+        "User", back_populates="conversations"
+    )  # noqa: F821
     messages: Mapped[list["Message"]] = relationship(  # noqa: F821
-        "Message", back_populates="conversation",
+        "Message",
+        back_populates="conversation",
         cascade="all, delete-orphan",
         order_by="Message.created_at",
     )

@@ -7,10 +7,9 @@ sources: JSON list of {document_id, filename, department, score, excerpt}
 import uuid
 from datetime import datetime
 
+from app.db.postgres import Base
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.db.postgres import Base
 
 
 class Message(Base):
@@ -30,16 +29,14 @@ class Message(Base):
     )
 
     # Who sent this message
-    role: Mapped[str] = mapped_column(
-        String, nullable=False               # "user" or "assistant"
-    )
+    role: Mapped[str] = mapped_column(String, nullable=False)  # "user" or "assistant"
 
     # Message body
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
     # RAG sources — JSON array (only set for assistant messages)
     sources: Mapped[str | None] = mapped_column(
-        Text, nullable=True                  # JSON: [{document_id, filename, score, excerpt}]
+        Text, nullable=True  # JSON: [{document_id, filename, score, excerpt}]
     )
 
     # LLM token usage (for monitoring/billing tracking)

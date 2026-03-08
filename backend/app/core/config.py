@@ -10,9 +10,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # ── Application ────────────────────────────────────────────────────────────
-    app_env: str = "development"                # "development" | "production"
-    app_port: int = 8000                        # Port uvicorn listens on
-    allowed_origins: str = (                    # Comma-separated CORS origins
+    app_env: str = "development"  # "development" | "production"
+    app_port: int = 8000  # Port uvicorn listens on
+    allowed_origins: str = (  # Comma-separated CORS origins
         "https://aiyedun.online,"
         "https://admin.aiyedun.online,"
         "http://localhost:3000,"
@@ -20,39 +20,39 @@ class Settings(BaseSettings):
     )
 
     # ── Security / JWT ─────────────────────────────────────────────────────────
-    secret_key: str = "changeme"               # Min 32-char random string in production
-    jwt_algorithm: str = "HS256"               # JWT signing algorithm
-    jwt_expire_hours: int = 8                  # Session duration (8 hours = work day)
+    secret_key: str = "changeme"  # Min 32-char random string in production
+    jwt_algorithm: str = "HS256"  # JWT signing algorithm
+    jwt_expire_hours: int = 8  # Session duration (8 hours = work day)
 
     # ── PostgreSQL ─────────────────────────────────────────────────────────────
-    postgres_host: str = "aiyedun-postgres"    # Container name or hostname
+    postgres_host: str = "aiyedun-postgres"  # Container name or hostname
     postgres_port: int = 5432
     postgres_db: str = "aiyedun"
     postgres_user: str = "aiyedun_user"
     postgres_password: str = ""
 
     # ── ChromaDB (vector store) ────────────────────────────────────────────────
-    chroma_host: str = "aiyedun-chromadb"      # Container name or hostname
+    chroma_host: str = "aiyedun-chromadb"  # Container name or hostname
     chroma_port: int = 8000
 
     # ── Ollama (local LLM) ─────────────────────────────────────────────────────
-    ollama_host: str = "aiyedun-ollama"        # Container name or hostname
+    ollama_host: str = "aiyedun-ollama"  # Container name or hostname
     ollama_port: int = 11434
-    ollama_model: str = "mistral"              # Model name pulled into Ollama
+    ollama_model: str = "mistral"  # Model name pulled into Ollama
 
     # ── Active Directory / LDAP ────────────────────────────────────────────────
     # Leave AD_SERVER empty to disable LDAP and use local DB auth (dev mode)
-    ad_server: str = ""                        # e.g. ldap://192.168.1.10
-    ad_domain: str = ""                        # e.g. yourcompany.local
-    ad_base_dn: str = ""                       # e.g. DC=yourcompany,DC=local
-    ad_service_account: str = ""              # Read-only service account username
-    ad_service_password: str = ""             # Service account password
+    ad_server: str = ""  # e.g. ldap://192.168.1.10
+    ad_domain: str = ""  # e.g. yourcompany.local
+    ad_base_dn: str = ""  # e.g. DC=yourcompany,DC=local
+    ad_service_account: str = ""  # Read-only service account username
+    ad_service_password: str = ""  # Service account password
 
     # ── Embeddings ─────────────────────────────────────────────────────────────
     embedding_model: str = "all-MiniLM-L6-v2"  # Local sentence-transformers model
 
     # ── File Watching (Phase 8) ────────────────────────────────────────────────
-    watched_paths: str = "[]"                  # JSON array of {path, department}
+    watched_paths: str = "[]"  # JSON array of {path, department}
     passerelle_path: str = "/mnt/shares/Passerelle"  # Drop zone for manual ingestion
 
     # ── Teams Integration (Phase 8, optional) ─────────────────────────────────

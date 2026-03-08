@@ -9,7 +9,6 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import httpx
-
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -21,7 +20,9 @@ _TIMEOUT = 120.0
 @asynccontextmanager
 async def ollama_client():
     """Yield a short-lived httpx client connected to the Ollama container."""
-    async with httpx.AsyncClient(base_url=settings.ollama_url, timeout=_TIMEOUT) as client:
+    async with httpx.AsyncClient(
+        base_url=settings.ollama_url, timeout=_TIMEOUT
+    ) as client:
         yield client
 
 
@@ -62,7 +63,7 @@ async def generate_stream(
 
     async with httpx.AsyncClient(
         base_url=settings.ollama_url,
-        timeout=httpx.Timeout(300.0),          # Streaming can take longer
+        timeout=httpx.Timeout(300.0),  # Streaming can take longer
     ) as client:
         async with client.stream(
             "POST",
@@ -104,7 +105,9 @@ async def health_check() -> bool:
             model_name = settings.ollama_model
             # Model may be listed as "mistral" or "mistral:latest"
             return any(
-                m == model_name or m.startswith(f"{model_name}:") or m.endswith(f":{model_name}")
+                m == model_name
+                or m.startswith(f"{model_name}:")
+                or m.endswith(f":{model_name}")
                 for m in available_models
             )
     except Exception as exc:  # noqa: BLE001

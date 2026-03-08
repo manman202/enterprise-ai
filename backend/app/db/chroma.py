@@ -7,12 +7,11 @@ import logging
 from typing import Any
 
 import chromadb
-
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_client = None   # chromadb async client (type: chromadb.AsyncHttpClient)
+_client = None  # chromadb async client (type: chromadb.AsyncHttpClient)
 
 # Default collection name for all documents
 DEFAULT_COLLECTION = "documents"
@@ -84,13 +83,15 @@ async def query_documents(
     distances = raw.get("distances", [[]])[0]
 
     for doc_id, text, meta, distance in zip(ids, texts, metas, distances):
-        results.append({
-            "document_id": doc_id,
-            "filename": meta.get("filename", "unknown"),
-            "department": meta.get("department", ""),
-            "excerpt": text[:400] if text else "",          # First 400 chars as preview
-            "score": round(1 - float(distance), 4),        # Cosine similarity
-        })
+        results.append(
+            {
+                "document_id": doc_id,
+                "filename": meta.get("filename", "unknown"),
+                "department": meta.get("department", ""),
+                "excerpt": text[:400] if text else "",  # First 400 chars as preview
+                "score": round(1 - float(distance), 4),  # Cosine similarity
+            }
+        )
 
     return results
 
@@ -111,7 +112,12 @@ async def add_document_chunks(
     # Build per-chunk IDs and metadata
     chunk_ids = [f"{doc_id}::{i}" for i in range(len(chunks))]
     metadatas = [
-        {"document_id": doc_id, "filename": filename, "department": department, "chunk_index": i}
+        {
+            "document_id": doc_id,
+            "filename": filename,
+            "department": department,
+            "chunk_index": i,
+        }
         for i in range(len(chunks))
     ]
 
@@ -134,7 +140,8 @@ async def delete_document_chunks(doc_id: str) -> None:
             await collection.delete(ids=existing["ids"])
             logger.info(
                 "Deleted %d chunks for document '%s' from ChromaDB",
-                len(existing["ids"]), doc_id,
+                len(existing["ids"]),
+                doc_id,
             )
     except Exception as exc:
         logger.warning("Failed to delete chunks for document '%s': %s", doc_id, exc)

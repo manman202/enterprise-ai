@@ -6,10 +6,6 @@ Admin-only for write operations; read is open to authenticated users.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.deps import get_current_admin, get_current_user
 from app.core.ingestion import ingest_document
 from app.db.chroma import delete_document_chunks
@@ -17,6 +13,9 @@ from app.db.postgres import get_db
 from app.models.document import Document
 from app.models.user import User
 from app.schemas.document import DocumentOut
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +28,8 @@ ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".xlsx", ".xls"}
 @router.post("/documents", response_model=DocumentOut, status_code=201)
 async def upload_document(
     file: UploadFile,
-    department: str = "",                           # Query param: department tag
-    current_admin: User = Depends(get_current_admin),   # Admin only
+    department: str = "",  # Query param: department tag
+    current_admin: User = Depends(get_current_admin),  # Admin only
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -39,6 +38,7 @@ async def upload_document(
     and the document record is updated to "ingested" or "failed" when done.
     """
     import os
+
     filename = file.filename or "untitled"
     ext = os.path.splitext(filename)[1].lower()
 
@@ -70,7 +70,9 @@ async def upload_document(
     await db.refresh(doc)
     logger.info(
         "Document '%s' uploaded by '%s' — status: %s",
-        filename, current_admin.username, doc.status,
+        filename,
+        current_admin.username,
+        doc.status,
     )
     return doc
 
@@ -88,7 +90,8 @@ async def list_documents(
     # RBAC: non-admin users filtered to their department
     if not current_user.is_admin and current_user.department:
         query = query.where(
-            (Document.department == current_user.department) | (Document.department.is_(None))
+            (Document.department == current_user.department)
+            | (Document.department.is_(None))
         )
 
     result = await db.execute(query)

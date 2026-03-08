@@ -11,10 +11,9 @@ Flow:
 import logging
 from typing import Any
 
+from app.core.config import settings
 from ldap3 import ALL_ATTRIBUTES, Connection, Server
 from ldap3.core.exceptions import LDAPBindError, LDAPException
-
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +43,9 @@ def ldap_authenticate(username: str, password: str) -> dict[str, Any] | None:
     user_dn = _make_user_dn(username)
 
     try:
-        server = Server(settings.ad_server, use_ssl=settings.ad_server.startswith("ldaps"))
+        server = Server(
+            settings.ad_server, use_ssl=settings.ad_server.startswith("ldaps")
+        )
 
         # First bind as the user to verify credentials
         with Connection(server, user=user_dn, password=password, auto_bind=True) as _:
@@ -64,8 +65,16 @@ def ldap_authenticate(username: str, password: str) -> dict[str, Any] | None:
                 )
 
                 if not svc_conn.entries:
-                    logger.warning("LDAP: user '%s' authenticated but not found in search", username)
-                    return {"full_name": username, "email": "", "department": "", "groups": []}
+                    logger.warning(
+                        "LDAP: user '%s' authenticated but not found in search",
+                        username,
+                    )
+                    return {
+                        "full_name": username,
+                        "email": "",
+                        "department": "",
+                        "groups": [],
+                    }
 
                 entry = svc_conn.entries[0]
 

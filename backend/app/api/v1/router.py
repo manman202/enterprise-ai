@@ -3,9 +3,9 @@ API v1 router — mounts all endpoint routers under /api/v1.
 WebSocket routes are registered on the FastAPI app directly in main.py.
 """
 
+from app.api.v1.endpoints import (admin, auth, chat, documents, health, search,
+                                  settings)
 from fastapi import APIRouter
-
-from app.api.v1.endpoints import admin, auth, chat, documents, health, search, settings
 
 router = APIRouter(prefix="/api/v1")
 

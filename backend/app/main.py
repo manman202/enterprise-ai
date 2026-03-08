@@ -11,12 +11,11 @@ Startup sequence:
 
 import logging
 
+from app.api.v1.endpoints.chat import websocket_chat
+from app.api.v1.router import router
+from app.core.config import settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from app.api.v1.router import router
-from app.api.v1.endpoints.chat import websocket_chat
-from app.core.config import settings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,18 +26,21 @@ logger = logging.getLogger(__name__)
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
 
+
 async def on_startup() -> None:
     """Run on every application startup."""
     logger.info("Aiyedun starting in '%s' mode", settings.app_env)
 
     # Ensure DB tables exist (safe to run on every start — idempotent)
     from app.db.postgres import create_all_tables
+
     await create_all_tables()
     logger.info("Database tables verified")
 
     # Preload the embedding model so the first query is not slow
     try:
         from app.core.embeddings import preload
+
         preload()
     except Exception as exc:
         logger.warning("Embedding model preload failed (non-fatal): %s", exc)
@@ -46,6 +48,7 @@ async def on_startup() -> None:
     # Start file watcher (monitors WATCHED_PATHS for new/modified documents)
     try:
         from app.services.file_watcher import start_file_watcher
+
         await start_file_watcher()
     except Exception as exc:
         logger.warning("File watcher startup failed (non-fatal): %s", exc)

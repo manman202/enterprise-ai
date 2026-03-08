@@ -7,10 +7,9 @@ outcome: "allow" | "deny"
 import uuid
 from datetime import datetime
 
+from app.db.postgres import Base
 from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.db.postgres import Base
 
 
 class AuditLog(Base):
@@ -34,13 +33,11 @@ class AuditLog(Base):
 
     # Result of the action
     outcome: Mapped[str] = mapped_column(
-        String, nullable=False, default="allow"   # "allow" | "deny"
+        String, nullable=False, default="allow"  # "allow" | "deny"
     )
 
     # Structured extra context — e.g. department checked, query text, error message
-    details: Mapped[str | None] = mapped_column(
-        Text, nullable=True                        # JSON object
-    )
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON object
 
     # Network context
     ip_address: Mapped[str | None] = mapped_column(String, nullable=True)

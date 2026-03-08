@@ -13,20 +13,21 @@ import json
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.deps import get_current_user
-from app.core.rag import build_rag_prompt, rag_query
 from app.core.embeddings import embed_text
+from app.core.rag import build_rag_prompt, rag_query
 from app.db.chroma import query_documents
 from app.db.ollama import generate_stream
 from app.db.postgres import get_db
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.user import User
-from app.schemas.chat import ChatRequest, ChatResponse, ConversationOut, MessageOut, SourceCitation
+from app.schemas.chat import (ChatRequest, ChatResponse, ConversationOut,
+                              MessageOut, SourceCitation)
+from fastapi import (APIRouter, Depends, HTTPException, WebSocket,
+                     WebSocketDisconnect)
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ router = APIRouter()
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
 
 def _parse_sources(sources_json: str | None) -> list[SourceCitation]:
     """Deserialise the stored JSON sources back into Pydantic objects."""
@@ -49,10 +51,10 @@ def _parse_sources(sources_json: str | None) -> list[SourceCitation]:
 def _departments(user: User) -> list[str] | None:
     """Return user's AD groups as department filter, or None for admin (all access)."""
     if user.is_admin:
-        return None   # Admin sees all departments
+        return None  # Admin sees all departments
     if user.department:
         return [user.department]
-    return None       # No department = no filter (allow all until AD configured)
+    return None  # No department = no filter (allow all until AD configured)
 
 
 async def _get_or_create_conversation(
@@ -72,7 +74,7 @@ async def _get_or_create_conversation(
     title = first_message[:60].rstrip() + ("…" if len(first_message) > 60 else "")
     conv = Conversation(user_id=user.id, title=title)
     db.add(conv)
-    await db.flush()     # Obtain ID before adding messages
+    await db.flush()  # Obtain ID before adding messages
     return conv
 
 
@@ -82,13 +84,14 @@ async def _load_history(conversation_id: str, db: AsyncSession) -> list[dict]:
         select(Message)
         .where(Message.conversation_id == conversation_id)
         .order_by(Message.created_at.desc())
-        .limit(10)                              # Last 10 turns max
+        .limit(10)  # Last 10 turns max
     )
     messages = list(reversed(result.scalars().all()))
     return [{"role": m.role, "content": m.content} for m in messages]
 
 
 # ── POST /chat/message ─────────────────────────────────────────────────────────
+
 
 @router.post("/chat/message", response_model=ChatResponse)
 async def send_message(
@@ -162,6 +165,7 @@ async def send_message(
 
 # ── GET /chat/conversations ────────────────────────────────────────────────────
 
+
 @router.get("/chat/conversations", response_model=list[ConversationOut])
 async def list_conversations(
     current_user: User = Depends(get_current_user),
@@ -177,6 +181,7 @@ async def list_conversations(
 
 
 # ── GET /chat/history/{conversation_id} ───────────────────────────────────────
+
 
 @router.get("/chat/history/{conversation_id}", response_model=list[MessageOut])
 async def get_history(
@@ -210,6 +215,7 @@ async def get_history(
 
 # ── DELETE /chat/conversations/{id} ───────────────────────────────────────────
 
+
 @router.delete("/chat/conversations/{conversation_id}", status_code=204)
 async def delete_conversation(
     conversation_id: str,
@@ -226,6 +232,7 @@ async def delete_conversation(
 
 
 # ── WebSocket /ws/chat/{conversation_id} ──────────────────────────────────────
+
 
 async def websocket_chat(websocket: WebSocket, conversation_id: str):
     """
@@ -262,8 +269,8 @@ async def websocket_chat(websocket: WebSocket, conversation_id: str):
             return
 
         # Step 2: validate JWT and get user
-        from app.core.security import decode_access_token
         import jwt as _jwt
+        from app.core.security import decode_access_token
         from app.db.postgres import AsyncSessionLocal
 
         try:
@@ -283,7 +290,9 @@ async def websocket_chat(websocket: WebSocket, conversation_id: str):
             # Step 3: get or create conversation
             conv = await _get_or_create_conversation(
                 conversation_id if conversation_id != "new" else None,
-                user, db, message,
+                user,
+                db,
+                message,
             )
 
             history = await _load_history(conv.id, db)
@@ -343,11 +352,15 @@ async def websocket_chat(websocket: WebSocket, conversation_id: str):
             await db.commit()
 
             # Step 8: send completion signal with sources
-            await websocket.send_text(json.dumps({
-                "done": True,
-                "sources": sources_data,
-                "conversation_id": conv.id,
-            }))
+            await websocket.send_text(
+                json.dumps(
+                    {
+                        "done": True,
+                        "sources": sources_data,
+                        "conversation_id": conv.id,
+                    }
+                )
+            )
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected for conversation '%s'", conversation_id)

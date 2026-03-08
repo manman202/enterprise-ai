@@ -6,10 +6,9 @@ LDAP users have hashed_password=None; local dev users have a password hash.
 import uuid
 from datetime import datetime
 
+from app.db.postgres import Base
 from sqlalchemy import Boolean, DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.db.postgres import Base
 
 
 class User(Base):
@@ -21,14 +20,16 @@ class User(Base):
     )
 
     # Identity
-    username: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    username: Mapped[str] = mapped_column(
+        String, unique=True, nullable=False, index=True
+    )
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     full_name: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Enterprise fields (populated from Active Directory)
     department: Mapped[str | None] = mapped_column(String, nullable=True)
     ad_groups: Mapped[str | None] = mapped_column(
-        Text, nullable=True                    # JSON array of AD group names
+        Text, nullable=True  # JSON array of AD group names
     )
 
     # Auth — nullable for AD users (they auth against LDAP, not local password)

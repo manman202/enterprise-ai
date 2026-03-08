@@ -51,7 +51,7 @@ export default function HealthPage() {
     fetchHealth()
     const id = setInterval(fetchHealth, 10_000)
     return () => clearInterval(id)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const overallOk = health?.status === 'ok' || health?.status === 'healthy'
 

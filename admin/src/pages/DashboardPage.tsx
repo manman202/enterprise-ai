@@ -94,7 +94,7 @@ export default function DashboardPage() {
     fetchAll()
     const id = setInterval(fetchAll, 30_000)
     return () => clearInterval(id)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const overallOk = health?.status === 'ok' || health?.status === 'healthy'
 
