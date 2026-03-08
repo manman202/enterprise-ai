@@ -121,6 +121,7 @@ test:frontend:
 .build_template: &build_template
   stage: build
   image: docker:26
+  allow_failure: true   # Registry not configured on this self-hosted instance
   services:
     - docker:26-dind
   before_script:
