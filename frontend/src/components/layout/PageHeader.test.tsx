@@ -15,6 +15,7 @@ describe('PageHeader', () => {
 
   it('renders no actions slot when omitted', () => {
     const { container } = render(<PageHeader title="Docs" />)
-    expect(container.querySelectorAll('div > div')).toHaveLength(0)
+    // Component root div is always present; verify no inner actions div exists
+    expect(container.querySelectorAll('div > div > div')).toHaveLength(0)
   })
 })
