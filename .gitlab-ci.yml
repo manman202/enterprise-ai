@@ -243,7 +243,9 @@ deploy:prod:
 
 mirror:github:
   stage: mirror
-  image: alpine/git:latest
+  image:
+    name: alpine/git:latest
+    entrypoint: [""]   # alpine/git has 'git' as entrypoint; override so CI can run sh
   script:
     - echo "→ Mirroring to GitHub..."
     - git remote add github https://manman202:${GITHUB_TOKEN}@github.com/manman202/enterprise-ai.git 2>/dev/null || true
