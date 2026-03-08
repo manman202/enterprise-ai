@@ -5,6 +5,7 @@ export type AuthUser = {
   username: string
   email: string
   is_active: boolean
+  is_admin: boolean
 }
 
 export type TokenResponse = {

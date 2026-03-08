@@ -1,7 +1,9 @@
 import { Routes, Route } from 'react-router-dom'
-import { AuthProvider } from '@/contexts/AuthContext'
+import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { AdminRoute } from '@/components/auth/AdminRoute'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
-import { Sidebar } from '@/components/layout/Sidebar'
+import { Sidebar, NavItem } from '@/components/layout/Sidebar'
+import AdminPage from '@/pages/AdminPage'
 import ChatPage from '@/pages/ChatPage'
 import DocumentsPage from '@/pages/DocumentsPage'
 import HealthPage from '@/pages/HealthPage'
@@ -9,7 +11,7 @@ import LoginPage from '@/pages/LoginPage'
 import RegisterPage from '@/pages/RegisterPage'
 import SearchPage from '@/pages/SearchPage'
 
-const NAV_ITEMS = [
+const BASE_NAV: NavItem[] = [
   { label: 'Chat', to: '/chat' },
   { label: 'Search', to: '/search' },
   { label: 'Documents', to: '/documents' },
@@ -17,14 +19,18 @@ const NAV_ITEMS = [
 ]
 
 function AppShell() {
+  const { user } = useAuth()
+  const navItems = user?.is_admin ? [...BASE_NAV, { label: 'Admin', to: '/admin' }] : BASE_NAV
+
   return (
     <div className="flex min-h-screen bg-gray-950 text-gray-100">
-      <Sidebar items={NAV_ITEMS} />
+      <Sidebar items={navItems} />
       <main className="flex-1 overflow-y-auto p-6">
         <Routes>
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
           <Route path="/" element={<HealthPage />} />
         </Routes>
       </main>
