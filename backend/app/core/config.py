@@ -58,8 +58,8 @@ class Settings(BaseSettings):
     teams_tenant_id: str = ""
 
     # ── Service Health checks ──────────────────────────────────────────────────
-    frontend_port: int = 3000   # Port the frontend nginx container listens on
-    admin_port: int = 4000      # Port the admin nginx container listens on
+    frontend_port: int = 3000  # Port the frontend nginx container listens on
+    admin_port: int = 4000  # Port the admin nginx container listens on
     gitlab_url: str = "https://gitlab.aiyedun.online"  # GitLab web URL reachable from backend
 
     # ── Computed properties ────────────────────────────────────────────────────

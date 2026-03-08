@@ -91,10 +91,10 @@ async def _sync_source(source) -> None:
 
     # Write audit log entry
     try:
+        import json as _json
+
         from app.db.postgres import AsyncSessionLocal as ASLS
         from app.models.audit_log import AuditLog
-
-        import json as _json
 
         async with ASLS() as db:
             entry = AuditLog(
