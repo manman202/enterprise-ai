@@ -42,15 +42,15 @@
 | Phase | Title | Status |
 |---|---|---|
 | Phase 1 | VPS Infrastructure, DNS, SSL, GitLab, CI/CD | ✅ DONE |
-| Phase 2 | Docker Compose Stack + Dockerfiles | ⏳ TODO |
-| Phase 3 | Automation Scripts | ⏳ TODO |
-| Phase 4 | Full Documentation | ⏳ TODO |
-| Phase 5 | Backend — Auth + RAG + Chat API | ⏳ TODO |
-| Phase 6 | Frontend — User Chat Portal | ⏳ TODO |
-| Phase 7 | Admin Dashboard | ⏳ TODO |
-| Phase 8 | File Watcher + Teams Bot | ⏳ TODO |
-| Phase 9 | Tests + Production CI/CD | ⏳ TODO |
-| Phase 10 | Production Deployment + v1.0.0 Release | ⏳ TODO |
+| Phase 2 | Docker Compose Stack + Dockerfiles | ✅ DONE |
+| Phase 3 | Automation Scripts | ✅ DONE |
+| Phase 4 | Full Documentation | ✅ DONE |
+| Phase 5 | Backend — Auth + RAG + Chat API | ✅ DONE |
+| Phase 6 | Frontend — User Chat Portal | ✅ DONE |
+| Phase 7 | Admin Dashboard | ✅ DONE |
+| Phase 8 | File Watcher + Teams Bot | ✅ DONE (file watcher; Teams deferred to V2) |
+| Phase 9 | Tests + Production CI/CD | ✅ DONE |
+| Phase 10 | Production Deployment + v1.0.0 Release | ✅ DONE (local; push pending SSH fix) |
 
 ---
 
