@@ -59,7 +59,43 @@ export interface ServiceHealth {
   uptime_pct: number
 }
 
+export interface ServiceDetail {
+  status: 'healthy' | 'unhealthy' | 'unknown'
+  response_ms: number
+  error?: string
+  model_loaded?: string
+}
+
+export interface SystemMetrics {
+  cpu_percent: number
+  ram_used_gb: number
+  ram_total_gb: number
+  ram_percent: number
+  disk_used_gb: number
+  disk_total_gb: number
+  disk_percent: number
+  swap_used_gb: number
+  swap_total_gb: number
+}
+
+export interface DetailedHealthResponse {
+  timestamp: string
+  services: {
+    postgres: ServiceDetail
+    chromadb: ServiceDetail
+    ollama: ServiceDetail & { model_loaded?: string }
+    backend: ServiceDetail
+    frontend: ServiceDetail
+    admin: ServiceDetail
+    gitlab: ServiceDetail
+  }
+  system: SystemMetrics
+}
+
 export const healthApi = {
   check: () =>
     api.get<{ status: string; services: Record<string, { status: string; latency_ms?: number }> }>('/health'),
+
+  detailed: () =>
+    api.get<DetailedHealthResponse>('/health/services'),
 }

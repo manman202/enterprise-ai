@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Users, MessageSquare, FileText, Activity } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Users, MessageSquare, FileText, Activity, RefreshCw } from 'lucide-react'
 import {
   LineChart,
   Line,
@@ -12,8 +12,9 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { AdminUser } from '@/api/auth'
-import { adminApi, knowledgeApi, healthApi, Document } from '@/api/admin'
+import { adminApi, knowledgeApi, healthApi, Document, DetailedHealthResponse, ServiceDetail } from '@/api/admin'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { Button } from '@/components/ui/Button'
 
 // ── Mock chart data ───────────────────────────────────────────────────────────
 
@@ -30,27 +31,49 @@ const DEPT_DATA = [
   { dept: 'Operations',  queries: 29  },
 ]
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-type HealthResponse = {
-  status: string
-  services: Record<string, { status: string; latency_ms?: number }>
-}
+const REFRESH_INTERVAL = 30  // seconds
 
-const SERVICE_CARDS = [
+const SERVICE_CARDS: { key: keyof DetailedHealthResponse['services']; label: string }[] = [
   { key: 'postgres',  label: 'PostgreSQL'  },
   { key: 'chromadb',  label: 'ChromaDB'    },
   { key: 'ollama',    label: 'Ollama'      },
   { key: 'backend',   label: 'Backend API' },
   { key: 'frontend',  label: 'Frontend'    },
   { key: 'admin',     label: 'Admin UI'    },
+  { key: 'gitlab',    label: 'GitLab'      },
 ]
 
-function statusDotClass(status: string | undefined): string {
-  if (status === 'ok' || status === 'healthy') return 'bg-green-500'
-  if (status === 'degraded')                   return 'bg-yellow-400'
-  if (status === 'unknown')                    return 'bg-gray-400'
-  return 'bg-red-500'
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function statusDotClass(status: string | undefined, pulsing = false): string {
+  const base = 'h-2.5 w-2.5 shrink-0 rounded-full'
+  let color = 'bg-gray-400'
+  if (status === 'healthy') color = 'bg-green-500'
+  else if (status === 'unhealthy') color = 'bg-red-500'
+  else if (status === 'unknown') color = 'bg-gray-400'
+  return `${base} ${color}${pulsing ? ' animate-pulse' : ''}`
+}
+
+function ProgressBar({
+  value,
+  danger = false,
+  warning = false,
+}: {
+  value: number
+  danger?: boolean
+  warning?: boolean
+}) {
+  const color = danger ? 'bg-red-500' : warning ? 'bg-yellow-400' : 'bg-blue-500'
+  return (
+    <div className="h-2 w-full rounded-full bg-gray-100">
+      <div
+        className={`h-2 rounded-full transition-all duration-500 ${color}`}
+        style={{ width: `${Math.min(100, value)}%` }}
+      />
+    </div>
+  )
 }
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
@@ -80,23 +103,60 @@ function KpiCard({ icon, label, value, subtitle }: KpiCardProps) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const [users,  setUsers]  = useState<AdminUser[] | null>(null)
-  const [docs,   setDocs]   = useState<Document[]  | null>(null)
-  const [health, setHealth] = useState<HealthResponse | null>(null)
+  const [users,     setUsers]     = useState<AdminUser[] | null>(null)
+  const [docs,      setDocs]      = useState<Document[]  | null>(null)
+  const [health,    setHealth]    = useState<DetailedHealthResponse | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [countdown,  setCountdown]  = useState(REFRESH_INTERVAL)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+
+  // Keep a ref for the interval so we can clear it on cleanup
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  async function fetchHealth() {
+    setRefreshing(true)
+    try {
+      const data = await healthApi.detailed()
+      setHealth(data)
+      setLastUpdated(new Date())
+    } catch {
+      // health stays as last known value
+    } finally {
+      setRefreshing(false)
+      setCountdown(REFRESH_INTERVAL)
+    }
+  }
 
   function fetchAll() {
     adminApi.listUsers().then(setUsers).catch(() => setUsers(null))
     knowledgeApi.listDocuments().then(setDocs).catch(() => setDocs(null))
-    healthApi.check().then(setHealth).catch(() => setHealth(null))
+    fetchHealth()
   }
 
   useEffect(() => {
     fetchAll()
-    const id = setInterval(fetchAll, 30_000)
-    return () => clearInterval(id)
-  }, [])
 
-  const overallOk = health?.status === 'ok' || health?.status === 'healthy'
+    // Auto-refresh health every 30 seconds
+    intervalRef.current = setInterval(fetchHealth, REFRESH_INTERVAL * 1000)
+
+    // Countdown ticker
+    countdownRef.current = setInterval(() => {
+      setCountdown((c) => (c <= 1 ? REFRESH_INTERVAL : c - 1))
+    }, 1000)
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+      if (countdownRef.current) clearInterval(countdownRef.current)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Compute overall status
+  const services = health?.services
+  const allHealthy = services
+    ? Object.values(services).every((s) => (s as ServiceDetail).status === 'healthy')
+    : null
+  const sys = health?.system
 
   return (
     <div className="max-w-7xl space-y-8">
@@ -126,17 +186,15 @@ export default function DashboardPage() {
           icon={<Activity size={20} />}
           label="System Health"
           value={
-            health ? (
-              <span className={overallOk ? 'text-green-600' : 'text-red-500'}>
-                {overallOk ? 'Healthy' : 'Degraded'}
+            allHealthy !== null ? (
+              <span className={allHealthy ? 'text-green-600' : 'text-red-500'}>
+                {allHealthy ? 'Healthy' : 'Degraded'}
               </span>
-            ) : (
-              '—'
-            )
+            ) : '—'
           }
           subtitle={
-            health
-              ? `${Object.keys(health.services).length} services monitored`
+            services
+              ? `${Object.keys(services).length} services monitored`
               : 'checking…'
           }
         />
@@ -149,23 +207,10 @@ export default function DashboardPage() {
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={HOURLY_DATA} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis
-                dataKey="hour"
-                tick={{ fontSize: 10, fill: '#9ca3af' }}
-                interval={3}
-              />
+              <XAxis dataKey="hour" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={3} />
               <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} />
-              <Tooltip
-                contentStyle={{ fontSize: 12, borderRadius: 6, border: '1px solid #e5e7eb' }}
-              />
-              <Line
-                type="monotone"
-                dataKey="queries"
-                stroke="#1e3a5f"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
+              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 6, border: '1px solid #e5e7eb' }} />
+              <Line type="monotone" dataKey="queries" stroke="#1e3a5f" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -177,9 +222,7 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
               <XAxis dataKey="dept" tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} />
-              <Tooltip
-                contentStyle={{ fontSize: 12, borderRadius: 6, border: '1px solid #e5e7eb' }}
-              />
+              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 6, border: '1px solid #e5e7eb' }} />
               <Bar dataKey="queries" fill="#1e3a5f" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -188,33 +231,104 @@ export default function DashboardPage() {
 
       {/* Row 3 — Service Health Grid */}
       <div>
-        <h2 className="mb-3 text-sm font-semibold text-gray-700">Service Health</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <h2 className="text-sm font-semibold text-gray-700">Service Health</h2>
+          <span className="text-xs text-gray-400">
+            {refreshing ? 'Refreshing…' : `Refreshing in ${countdown}s`}
+          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={refreshing}
+            onClick={fetchHealth}
+            className="ml-auto"
+          >
+            <RefreshCw size={13} />
+            Refresh now
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7">
           {SERVICE_CARDS.map(({ key, label }) => {
-            const svc    = health?.services[key]
+            const svc = services?.[key] as ServiceDetail | undefined
             const status = svc?.status ?? 'unknown'
-            const latency = svc?.latency_ms
+            const ms = svc?.response_ms
 
             return (
-              <div
-                key={key}
-                className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
-              >
+              <div key={key} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="mb-2 flex items-center gap-2">
-                  <span
-                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusDotClass(status)}`}
-                  />
+                  <span className={statusDotClass(status, refreshing)} />
                   <span className="truncate text-xs font-medium text-gray-700">{label}</span>
                 </div>
                 <p className="text-xs text-gray-400">
-                  {latency !== undefined ? `${latency} ms` : status}
+                  {ms !== undefined ? `${ms} ms` : status}
                 </p>
-                <p className="text-xs text-gray-400">uptime —</p>
+                {key === 'ollama' && (svc as ServiceDetail & { model_loaded?: string })?.model_loaded && (
+                  <p className="mt-0.5 truncate text-xs text-gray-400">
+                    {(svc as ServiceDetail & { model_loaded?: string }).model_loaded}
+                  </p>
+                )}
               </div>
             )
           })}
         </div>
+
+        {lastUpdated && (
+          <p className="mt-2 text-xs text-gray-400">
+            Last updated: {lastUpdated.toLocaleTimeString()}
+          </p>
+        )}
       </div>
+
+      {/* Row 4 — System Metrics */}
+      {sys && (
+        <div>
+          <h2 className="mb-3 text-sm font-semibold text-gray-700">System Resources</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {/* CPU */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="mb-2 text-xs font-medium text-gray-500">CPU Usage</p>
+              <p className="mb-2 text-xl font-bold text-gray-900">{sys.cpu_percent}%</p>
+              <ProgressBar value={sys.cpu_percent} danger={sys.cpu_percent > 85} warning={sys.cpu_percent > 70} />
+            </div>
+
+            {/* RAM */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="mb-2 text-xs font-medium text-gray-500">RAM</p>
+              <p className="mb-2 text-xl font-bold text-gray-900">
+                {sys.ram_used_gb} GB
+                <span className="ml-1 text-sm font-normal text-gray-400">/ {sys.ram_total_gb} GB</span>
+              </p>
+              <ProgressBar value={sys.ram_percent} danger={sys.ram_percent > 85} warning={sys.ram_percent > 70} />
+              <p className="mt-1 text-xs text-gray-400">{sys.ram_percent}% used</p>
+            </div>
+
+            {/* Disk */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="mb-2 text-xs font-medium text-gray-500">Disk</p>
+              <p className="mb-2 text-xl font-bold text-gray-900">
+                {sys.disk_used_gb} GB
+                <span className="ml-1 text-sm font-normal text-gray-400">/ {sys.disk_total_gb} GB</span>
+              </p>
+              <ProgressBar value={sys.disk_percent} danger={sys.disk_percent > 80} warning={sys.disk_percent > 65} />
+              <p className="mt-1 text-xs text-gray-400">{sys.disk_percent}% used</p>
+            </div>
+
+            {/* Swap */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="mb-2 text-xs font-medium text-gray-500">Swap</p>
+              <p className="mb-2 text-xl font-bold text-gray-900">
+                {sys.swap_used_gb} GB
+                <span className="ml-1 text-sm font-normal text-gray-400">/ {sys.swap_total_gb} GB</span>
+              </p>
+              <ProgressBar
+                value={sys.swap_total_gb > 0 ? (sys.swap_used_gb / sys.swap_total_gb) * 100 : 0}
+                warning={(sys.swap_used_gb / sys.swap_total_gb) > 0.5}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

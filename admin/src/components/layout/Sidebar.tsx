@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -12,8 +12,10 @@ import {
   X,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { knowledgeSourcesApi } from '@/api/knowledge_sources'
 
-const NAV_ITEMS = [
+// NAV_ITEMS is defined dynamically below so we can inject the error badge count
+const BASE_NAV_ITEMS = [
   { label: 'Dashboard',     icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Users',         icon: Users,           path: '/users' },
   { label: 'Knowledge',     icon: BookOpen,        path: '/knowledge' },
@@ -29,6 +31,19 @@ interface SidebarProps {
 
 function SidebarContent({ onClose }: { onClose?: () => void }) {
   const { user, logout } = useAuth()
+  const [knowledgeErrors, setKnowledgeErrors] = useState(0)
+
+  // Check for knowledge sources with error status (refresh every 60s)
+  useEffect(() => {
+    const check = () => {
+      knowledgeSourcesApi.list()
+        .then((sources) => setKnowledgeErrors(sources.filter((s) => s.status === 'error').length))
+        .catch(() => {}) // non-fatal
+    }
+    check()
+    const id = setInterval(check, 60_000)
+    return () => clearInterval(id)
+  }, [])
 
   return (
     <aside
@@ -56,7 +71,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-2 space-y-0.5">
-        {NAV_ITEMS.map(({ label, icon: Icon, path }) => (
+        {BASE_NAV_ITEMS.map(({ label, icon: Icon, path }) => (
           <NavLink
             key={path}
             to={path}
@@ -72,7 +87,13 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
             }
           >
             <Icon size={16} className="shrink-0" />
-            {label}
+            <span className="flex-1">{label}</span>
+            {/* Error badge — shown on Knowledge nav item when sources have errors */}
+            {label === 'Knowledge' && knowledgeErrors > 0 && (
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                {knowledgeErrors}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

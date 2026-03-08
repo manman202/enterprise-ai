@@ -54,6 +54,14 @@ async def on_startup() -> None:
     except Exception as exc:
         logger.warning("File watcher startup failed (non-fatal): %s", exc)
 
+    # Start knowledge source sync scheduler (runs every 15 minutes)
+    try:
+        from app.services.sync_scheduler import start_sync_scheduler
+
+        await start_sync_scheduler()
+    except Exception as exc:
+        logger.warning("Sync scheduler startup failed (non-fatal): %s", exc)
+
     logger.info("Aiyedun startup complete")
 
 
