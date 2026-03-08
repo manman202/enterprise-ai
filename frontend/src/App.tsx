@@ -10,11 +10,13 @@ import HealthPage from '@/pages/HealthPage'
 import LoginPage from '@/pages/LoginPage'
 import RegisterPage from '@/pages/RegisterPage'
 import SearchPage from '@/pages/SearchPage'
+import SettingsPage from '@/pages/SettingsPage'
 
 const BASE_NAV: NavItem[] = [
   { label: 'Chat', to: '/chat' },
   { label: 'Search', to: '/search' },
   { label: 'Documents', to: '/documents' },
+  { label: 'Settings', to: '/settings' },
   { label: 'Health', to: '/' },
 ]
 
@@ -31,6 +33,7 @@ function AppShell() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/" element={<HealthPage />} />
         </Routes>
       </main>
