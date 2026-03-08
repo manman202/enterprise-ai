@@ -41,9 +41,9 @@ class Conversation(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship(
+    user: Mapped["User"] = relationship(  # noqa: F821
         "User", back_populates="conversations"
-    )  # noqa: F821
+    )
     messages: Mapped[list["Message"]] = relationship(  # noqa: F821
         "Message",
         back_populates="conversation",
