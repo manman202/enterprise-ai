@@ -30,23 +30,24 @@ function renderWith(initialPath = '/') {
 
 describe('ProtectedRoute', () => {
   it('shows spinner while loading', () => {
-    mockUseAuth.mockReturnValue({ user: null, loading: true, login: vi.fn(), logout: vi.fn() })
+    mockUseAuth.mockReturnValue({ user: null, loading: true, login: vi.fn(), logout: vi.fn(), refreshUser: vi.fn() })
     renderWith()
     expect(screen.getByLabelText('Loading')).toBeInTheDocument()
   })
 
   it('redirects to /login when not authenticated', () => {
-    mockUseAuth.mockReturnValue({ user: null, loading: false, login: vi.fn(), logout: vi.fn() })
+    mockUseAuth.mockReturnValue({ user: null, loading: false, login: vi.fn(), logout: vi.fn(), refreshUser: vi.fn() })
     renderWith()
     expect(screen.getByText('Login Page')).toBeInTheDocument()
   })
 
   it('renders children when authenticated', () => {
     mockUseAuth.mockReturnValue({
-      user: { id: '1', username: 'alice', email: 'a@b.com', is_active: true },
+      user: { id: '1', username: 'alice', email: 'a@b.com', is_active: true, is_admin: false },
       loading: false,
       login: vi.fn(),
       logout: vi.fn(),
+      refreshUser: vi.fn(),
     })
     renderWith()
     expect(screen.getByText('Protected Content')).toBeInTheDocument()

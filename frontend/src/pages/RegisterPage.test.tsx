@@ -18,7 +18,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 const mockRegister = vi.mocked(authModule.authApi.register)
 const mockUseAuth = vi.mocked(AuthContext.useAuth)
 
-const user = { id: '1', username: 'charlie', email: 'c@c.com', is_active: true }
+const user = { id: '1', username: 'charlie', email: 'c@c.com', is_active: true, is_admin: false }
 
 function renderPage() {
   return render(
@@ -30,7 +30,7 @@ function renderPage() {
 
 beforeEach(() => {
   mockRegister.mockReset()
-  mockUseAuth.mockReturnValue({ user: null, loading: false, login: vi.fn(), logout: vi.fn() })
+  mockUseAuth.mockReturnValue({ user: null, loading: false, login: vi.fn(), logout: vi.fn(), refreshUser: vi.fn() })
 })
 
 describe('RegisterPage', () => {
@@ -46,7 +46,7 @@ describe('RegisterPage', () => {
 
   it('calls register then login on successful submission', async () => {
     const mockLogin = vi.fn().mockResolvedValue(undefined)
-    mockUseAuth.mockReturnValue({ user: null, loading: false, login: mockLogin, logout: vi.fn() })
+    mockUseAuth.mockReturnValue({ user: null, loading: false, login: mockLogin, logout: vi.fn(), refreshUser: vi.fn() })
     mockRegister.mockResolvedValue(user)
 
     renderPage()

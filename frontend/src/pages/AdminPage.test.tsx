@@ -31,7 +31,7 @@ beforeEach(() => {
   mockListUsers.mockReset()
   mockUpdateUser.mockReset()
   mockDeleteUser.mockReset()
-  mockUseAuth.mockReturnValue({ user: adminUser, loading: false, login: vi.fn(), logout: vi.fn() })
+  mockUseAuth.mockReturnValue({ user: adminUser, loading: false, login: vi.fn(), logout: vi.fn(), refreshUser: vi.fn() })
 })
 
 describe('AdminPage', () => {

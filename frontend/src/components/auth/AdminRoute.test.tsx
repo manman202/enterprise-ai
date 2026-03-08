@@ -24,25 +24,25 @@ function renderRoute(initialPath = '/admin') {
 
 describe('AdminRoute', () => {
   it('shows spinner while loading', () => {
-    mockUseAuth.mockReturnValue({ user: null, loading: true, login: vi.fn(), logout: vi.fn() })
+    mockUseAuth.mockReturnValue({ user: null, loading: true, login: vi.fn(), logout: vi.fn(), refreshUser: vi.fn() })
     renderRoute()
     expect(screen.getByLabelText('Loading')).toBeInTheDocument()
   })
 
   it('redirects to /login when unauthenticated', () => {
-    mockUseAuth.mockReturnValue({ user: null, loading: false, login: vi.fn(), logout: vi.fn() })
+    mockUseAuth.mockReturnValue({ user: null, loading: false, login: vi.fn(), logout: vi.fn(), refreshUser: vi.fn() })
     renderRoute()
     expect(screen.getByText('Login')).toBeInTheDocument()
   })
 
   it('redirects to / when authenticated but not admin', () => {
-    mockUseAuth.mockReturnValue({ user: regularUser, loading: false, login: vi.fn(), logout: vi.fn() })
+    mockUseAuth.mockReturnValue({ user: regularUser, loading: false, login: vi.fn(), logout: vi.fn(), refreshUser: vi.fn() })
     renderRoute()
     expect(screen.getByText('Home')).toBeInTheDocument()
   })
 
   it('renders children for admin users', () => {
-    mockUseAuth.mockReturnValue({ user: adminUser, loading: false, login: vi.fn(), logout: vi.fn() })
+    mockUseAuth.mockReturnValue({ user: adminUser, loading: false, login: vi.fn(), logout: vi.fn(), refreshUser: vi.fn() })
     renderRoute()
     expect(screen.getByText('Admin Content')).toBeInTheDocument()
   })

@@ -13,7 +13,7 @@ vi.mock('@/api/auth', () => ({
 const mockLogin = vi.mocked(authModule.authApi.login)
 const mockMe = vi.mocked(authModule.authApi.me)
 
-const user = { id: '1', username: 'alice', email: 'a@b.com', is_active: true }
+const user = { id: '1', username: 'alice', email: 'a@b.com', is_active: true, is_admin: false }
 
 function TestConsumer() {
   const { user: authUser, loading, login, logout } = useAuth()

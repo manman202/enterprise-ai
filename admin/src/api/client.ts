@@ -2,12 +2,22 @@ export const TOKEN_KEY = 'aiyedun_admin_token'
 
 type ApiError = { detail?: string | { msg: string }[] }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, params?: Record<string, unknown>): Promise<T> {
   const token = localStorage.getItem(TOKEN_KEY)
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`/api/v1${path}`, {
+  let url = `/api/v1${path}`
+  if (params && Object.keys(params).length > 0) {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null) qs.set(k, String(v))
+    }
+    const qsStr = qs.toString()
+    if (qsStr) url += `?${qsStr}`
+  }
+
+  const res = await fetch(url, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -25,8 +35,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export const api = {
-  get:    <T>(path: string)                        => request<T>('GET',    path),
-  post:   <T>(path: string, body: unknown)         => request<T>('POST',   path, body),
-  patch:  <T>(path: string, body: unknown)         => request<T>('PATCH',  path, body),
-  del:    <T>(path: string)                        => request<T>('DELETE', path),
+  get:    <T>(path: string, params?: Record<string, unknown>) => request<T>('GET',    path, undefined, params),
+  post:   <T>(path: string, body: unknown)                    => request<T>('POST',   path, body),
+  patch:  <T>(path: string, body: unknown)                    => request<T>('PATCH',  path, body),
+  del:    <T>(path: string)                                   => request<T>('DELETE', path),
 }
