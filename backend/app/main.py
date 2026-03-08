@@ -43,6 +43,13 @@ async def on_startup() -> None:
     except Exception as exc:
         logger.warning("Embedding model preload failed (non-fatal): %s", exc)
 
+    # Start file watcher (monitors WATCHED_PATHS for new/modified documents)
+    try:
+        from app.services.file_watcher import start_file_watcher
+        await start_file_watcher()
+    except Exception as exc:
+        logger.warning("File watcher startup failed (non-fatal): %s", exc)
+
     logger.info("Aiyedun startup complete")
 
 

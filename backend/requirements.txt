@@ -32,3 +32,6 @@ pypdf==4.3.1                  # PDF text extraction
 python-docx==1.1.2            # DOCX text extraction
 openpyxl==3.1.5               # XLSX text extraction
 aiofiles==24.1.0              # async file I/O
+
+# ── File Watching ───────────────────────────────────────────────────────────────
+watchdog==6.0.0               # Monitor directories for new/modified files
