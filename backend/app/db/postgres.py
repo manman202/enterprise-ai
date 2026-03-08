@@ -3,10 +3,10 @@ PostgreSQL async engine, session factory, Base class, and startup helpers.
 Uses SQLAlchemy 2.x async API with asyncpg driver.
 """
 
-from app.core.config import settings
-from sqlalchemy.ext.asyncio import (AsyncSession, async_sessionmaker,
-                                    create_async_engine)
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+
+from app.core.config import settings
 
 # ── Engine & Session ───────────────────────────────────────────────────────────
 engine = create_async_engine(

@@ -28,23 +28,17 @@ def _load_model() -> Any:
         return _model
 
     try:
-        from sentence_transformers import \
-            SentenceTransformer  # type: ignore[import]
+        from sentence_transformers import SentenceTransformer  # type: ignore[import]
 
         logger.info("Loading embedding model '%s'...", settings.embedding_model)
         _model = SentenceTransformer(settings.embedding_model)
         logger.info("Embedding model loaded successfully")
         return _model
     except ImportError:
-        logger.error(
-            "sentence-transformers not installed. "
-            "Run: pip install sentence-transformers"
-        )
+        logger.error("sentence-transformers not installed. " "Run: pip install sentence-transformers")
         raise
     except Exception as exc:
-        logger.error(
-            "Failed to load embedding model '%s': %s", settings.embedding_model, exc
-        )
+        logger.error("Failed to load embedding model '%s': %s", settings.embedding_model, exc)
         raise
 
 

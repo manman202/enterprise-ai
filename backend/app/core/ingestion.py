@@ -9,10 +9,11 @@ import os
 import re
 from datetime import datetime
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.embeddings import embed_batch
 from app.db.chroma import add_document_chunks
 from app.models.document import Document
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +114,7 @@ def extract_text(filepath: str) -> str:
 # ── Chunking ───────────────────────────────────────────────────────────────────
 
 
-def chunk_text(
-    text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP
-) -> list[str]:
+def chunk_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
     """
     Split text into overlapping chunks on sentence/paragraph boundaries.
     Preserves semantic context across chunk boundaries via overlap.

@@ -6,6 +6,10 @@ Admin-only for write operations; read is open to authenticated users.
 
 import logging
 
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_admin, get_current_user
 from app.core.ingestion import ingest_document
 from app.db.chroma import delete_document_chunks
@@ -13,9 +17,6 @@ from app.db.postgres import get_db
 from app.models.document import Document
 from app.models.user import User
 from app.schemas.document import DocumentOut
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -89,10 +90,7 @@ async def list_documents(
 
     # RBAC: non-admin users filtered to their department
     if not current_user.is_admin and current_user.department:
-        query = query.where(
-            (Document.department == current_user.department)
-            | (Document.department.is_(None))
-        )
+        query = query.where((Document.department == current_user.department) | (Document.department.is_(None)))
 
     result = await db.execute(query)
     return result.scalars().all()
@@ -132,9 +130,7 @@ async def reindex_all(
     ingestion for documents where the content is already stored.
     This is a placeholder; full re-index from disk is done via the file watcher (Phase 8).
     """
-    result = await db.execute(
-        select(Document).where(Document.status.in_(["pending", "failed"]))
-    )
+    result = await db.execute(select(Document).where(Document.status.in_(["pending", "failed"])))
     pending_docs = result.scalars().all()
 
     return {

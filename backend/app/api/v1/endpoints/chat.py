@@ -13,6 +13,10 @@ import json
 import logging
 from datetime import datetime
 
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
 from app.core.embeddings import embed_text
 from app.core.rag import build_rag_prompt, rag_query
@@ -22,12 +26,7 @@ from app.db.postgres import get_db
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.user import User
-from app.schemas.chat import (ChatRequest, ChatResponse, ConversationOut,
-                              MessageOut, SourceCitation)
-from fastapi import (APIRouter, Depends, HTTPException, WebSocket,
-                     WebSocketDisconnect)
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.schemas.chat import ChatRequest, ChatResponse, ConversationOut, MessageOut, SourceCitation
 
 logger = logging.getLogger(__name__)
 
@@ -108,9 +107,7 @@ async def send_message(
         raise HTTPException(status_code=422, detail="Message must not be empty")
 
     # Get or create conversation
-    conv = await _get_or_create_conversation(
-        body.conversation_id, current_user, db, body.message
-    )
+    conv = await _get_or_create_conversation(body.conversation_id, current_user, db, body.message)
 
     # Load recent history for context
     history = await _load_history(conv.id, db)
@@ -173,9 +170,7 @@ async def list_conversations(
 ):
     """Return all conversations for the authenticated user, newest first."""
     result = await db.execute(
-        select(Conversation)
-        .where(Conversation.user_id == current_user.id)
-        .order_by(Conversation.updated_at.desc())
+        select(Conversation).where(Conversation.user_id == current_user.id).order_by(Conversation.updated_at.desc())
     )
     return result.scalars().all()
 
@@ -195,9 +190,7 @@ async def get_history(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     result = await db.execute(
-        select(Message)
-        .where(Message.conversation_id == conversation_id)
-        .order_by(Message.created_at)
+        select(Message).where(Message.conversation_id == conversation_id).order_by(Message.created_at)
     )
     messages = result.scalars().all()
 
@@ -270,6 +263,7 @@ async def websocket_chat(websocket: WebSocket, conversation_id: str):
 
         # Step 2: validate JWT and get user
         import jwt as _jwt
+
         from app.core.security import decode_access_token
         from app.db.postgres import AsyncSessionLocal
 

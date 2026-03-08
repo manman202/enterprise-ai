@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
+
 from app.core.config import settings
 
 _ALGORITHM = "HS256"
@@ -17,9 +18,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(subject: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(hours=settings.jwt_expire_hours)
-    return jwt.encode(
-        {"sub": subject, "exp": expire}, settings.secret_key, algorithm=_ALGORITHM
-    )
+    return jwt.encode({"sub": subject, "exp": expire}, settings.secret_key, algorithm=_ALGORITHM)
 
 
 def decode_access_token(token: str) -> str:

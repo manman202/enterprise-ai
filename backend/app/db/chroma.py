@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 import chromadb
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)

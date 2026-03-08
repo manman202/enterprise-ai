@@ -17,9 +17,10 @@ import logging
 import os
 from pathlib import Path
 
-from app.core.config import settings
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +43,7 @@ class DocumentEventHandler(FileSystemEventHandler):
 
     def _should_process(self, path: str) -> bool:
         """Return True if the file extension is supported and file exists."""
-        return Path(path).suffix.lower() in SUPPORTED_EXTENSIONS and os.path.isfile(
-            path
-        )
+        return Path(path).suffix.lower() in SUPPORTED_EXTENSIONS and os.path.isfile(path)
 
     def on_created(self, event: FileSystemEvent) -> None:
         """New file detected — queue for ingestion."""
@@ -85,13 +84,9 @@ async def _ingest_worker(queue: asyncio.Queue) -> None:
             async with AsyncSessionLocal() as db:
                 result = await ingest_document(file_path, department, db)
                 if result == "skipped":
-                    logger.info(
-                        "Ingestion worker: skipped (already ingested) → %s", file_path
-                    )
+                    logger.info("Ingestion worker: skipped (already ingested) → %s", file_path)
                 else:
-                    logger.info(
-                        "Ingestion worker: complete → %s (%s chunks)", file_path, result
-                    )
+                    logger.info("Ingestion worker: complete → %s (%s chunks)", file_path, result)
         except Exception as exc:
             logger.error(
                 "Ingestion worker: error processing %s — %s",
@@ -136,15 +131,11 @@ async def start_file_watcher() -> None:
         department = entry.get("department", "general")
 
         if not path:
-            logger.warning(
-                "File watcher: entry missing 'path' key — skipping %s", entry
-            )
+            logger.warning("File watcher: entry missing 'path' key — skipping %s", entry)
             continue
 
         if not os.path.isdir(path):
-            logger.warning(
-                "File watcher: path does not exist or is not a directory — %s", path
-            )
+            logger.warning("File watcher: path does not exist or is not a directory — %s", path)
             continue
 
         handler = DocumentEventHandler(department=department, queue=queue)

@@ -1,6 +1,7 @@
+from fastapi import APIRouter, Depends, HTTPException
+
 from app.db.chroma import get_chroma
 from app.schemas.search import SearchRequest, SearchResponse, SearchResult
-from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter()
 

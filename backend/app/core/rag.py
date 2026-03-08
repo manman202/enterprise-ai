@@ -87,12 +87,7 @@ def build_rag_prompt(
             history_block = "\n\nHISTORIQUE DE CONVERSATION:\n" + "".join(history_lines)
 
     # Final prompt
-    prompt = (
-        f"{system}"
-        f"{context}"
-        f"{history_block}"
-        f"\nQuestion: {question}\n\nRéponse:"
-    )
+    prompt = f"{system}" f"{context}" f"{history_block}" f"\nQuestion: {question}\n\nRéponse:"
     return prompt
 
 

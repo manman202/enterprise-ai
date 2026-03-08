@@ -1,12 +1,13 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
 from app.core.security import hash_password, verify_password
 from app.db.postgres import get_db
 from app.models.user import User
 from app.schemas.auth import UserOut
 from app.schemas.settings import PasswordChangeRequest, ProfileUpdateRequest
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/users")
 
@@ -23,17 +24,13 @@ async def update_profile(
     if body.username and body.username != current_user.username:
         clash = await db.execute(select(User).where(User.username == body.username))
         if clash.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail="Username already taken"
-            )
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already taken")
         current_user.username = body.username
 
     if body.email and body.email != current_user.email:
         clash = await db.execute(select(User).where(User.email == body.email))
         if clash.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail="Email already taken"
-            )
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already taken")
         current_user.email = body.email
 
     await db.commit()

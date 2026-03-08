@@ -13,10 +13,7 @@ class Settings(BaseSettings):
     app_env: str = "development"  # "development" | "production"
     app_port: int = 8000  # Port uvicorn listens on
     allowed_origins: str = (  # Comma-separated CORS origins
-        "https://aiyedun.online,"
-        "https://admin.aiyedun.online,"
-        "http://localhost:3000,"
-        "http://localhost:4000"
+        "https://aiyedun.online," "https://admin.aiyedun.online," "http://localhost:3000," "http://localhost:4000"
     )
 
     # ── Security / JWT ─────────────────────────────────────────────────────────

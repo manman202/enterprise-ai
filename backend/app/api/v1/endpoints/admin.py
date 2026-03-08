@@ -1,11 +1,12 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_admin
 from app.db.postgres import get_db
 from app.models.user import User
 from app.schemas.admin import UserUpdateRequest
 from app.schemas.auth import UserOut
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/admin")
 
@@ -28,9 +29,7 @@ async def update_user(
 ):
     user = await db.get(User, user_id)
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     if body.is_active is not None:
         if user.id == current_user.id and not body.is_active:
@@ -67,9 +66,7 @@ async def delete_user(
 
     user = await db.get(User, user_id)
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     await db.delete(user)
     await db.commit()
