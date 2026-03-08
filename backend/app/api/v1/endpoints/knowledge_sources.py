@@ -15,11 +15,13 @@ Routes:
 
 import json
 import logging
+import os
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -348,3 +350,188 @@ async def test_connection(
     except Exception as e:
         logger.error("test_connection error: %s", e)
         return TestConnectionResponse(success=False, message=str(e))
+
+
+# ── Upload endpoint (local sources only) ─────────────────────────────────────
+
+# Supported extensions for direct file upload
+_UPLOAD_ALLOWED = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".txt", ".md"}
+_UPLOAD_MAX_BYTES = 50 * 1024 * 1024  # 50 MB per file
+
+
+@router.post("/{source_id}/upload")
+async def upload_files(
+    source_id: str,
+    files: List[UploadFile] = File(...),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    """
+    Upload one or more files directly into a local knowledge source path.
+    Saves each file to the configured local path then triggers ingestion.
+    Only supported for source_type='local'.
+    Max file size: 50 MB per file.
+    Supported types: .pdf, .docx, .doc, .xlsx, .xls, .txt, .md
+    """
+    source = await db.get(KnowledgeSource, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Knowledge source not found")
+    if source.source_type != "local":
+        raise HTTPException(status_code=400, detail="File upload is only supported for local folder sources")
+
+    # Get the configured local path
+    config = {}
+    if source.config:
+        try:
+            config = json.loads(source.config)
+        except Exception:
+            pass
+    local_path = config.get("path", "")
+    if not local_path or not os.path.isdir(local_path):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Local path '{local_path}' does not exist or is not accessible on the server",
+        )
+
+    from app.services.ingestion import ingest_bytes
+
+    results = []
+    for upload in files:
+        filename = upload.filename or "unknown"
+        ext = Path(filename).suffix.lower()
+
+        # Validate extension
+        if ext not in _UPLOAD_ALLOWED:
+            results.append({
+                "filename": filename,
+                "size": 0,
+                "status": "rejected",
+                "error": f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(_UPLOAD_ALLOWED))}",
+                "chunks_created": 0,
+            })
+            continue
+
+        # Read content
+        content = await upload.read()
+        size = len(content)
+
+        if size > _UPLOAD_MAX_BYTES:
+            results.append({
+                "filename": filename,
+                "size": size,
+                "status": "rejected",
+                "error": f"File exceeds 50 MB limit ({size // 1024 // 1024} MB)",
+                "chunks_created": 0,
+            })
+            continue
+
+        # Save to the local path
+        dest_path = os.path.join(local_path, filename)
+        try:
+            with open(dest_path, "wb") as fh:
+                fh.write(content)
+        except OSError as e:
+            results.append({
+                "filename": filename,
+                "size": size,
+                "status": "error",
+                "error": f"Could not write to disk: {e}",
+                "chunks_created": 0,
+            })
+            continue
+
+        # Ingest
+        try:
+            await ingest_bytes(
+                content=content,
+                filename=filename,
+                source_id=source_id,
+                department=source.department or "",
+            )
+            results.append({
+                "filename": filename,
+                "size": size,
+                "status": "ingested",
+                "error": None,
+                "chunks_created": None,  # chunk count is updated async in the ingestion pipeline
+            })
+        except Exception as e:
+            logger.error("Upload ingest failed for %s: %s", filename, e)
+            results.append({
+                "filename": filename,
+                "size": size,
+                "status": "error",
+                "error": str(e),
+                "chunks_created": 0,
+            })
+
+    logger.info(
+        "Upload: %d file(s) to source '%s' by %s — %d ok, %d failed",
+        len(files),
+        source.name,
+        admin.username,
+        sum(1 for r in results if r["status"] == "ingested"),
+        sum(1 for r in results if r["status"] in ("error", "rejected")),
+    )
+    return {"uploaded": results, "total_files": len(results)}
+
+
+# ── Scan VPS path endpoint ────────────────────────────────────────────────────
+
+
+@router.get("/scan-path")
+async def scan_path(
+    path: str = Query(..., description="Absolute path to scan on the VPS filesystem"),
+    _admin: User = Depends(get_current_admin),
+):
+    """
+    Walk a path on the VPS server and return all supported files found.
+    Used by the upload modal to preview what's available at a given path.
+    """
+    if not path:
+        raise HTTPException(status_code=400, detail="path parameter is required")
+
+    # Security: prevent path traversal outside expected mount points
+    resolved = os.path.realpath(path)
+    if not os.path.isabs(resolved):
+        raise HTTPException(status_code=400, detail="Path must be absolute")
+
+    if not os.path.exists(resolved):
+        raise HTTPException(status_code=404, detail=f"Path does not exist: {path}")
+
+    if not os.path.isdir(resolved):
+        raise HTTPException(status_code=400, detail=f"Path is not a directory: {path}")
+
+    if not os.access(resolved, os.R_OK):
+        raise HTTPException(status_code=403, detail=f"Path is not readable: {path}")
+
+    files = []
+    total = 0
+    supported = 0
+
+    for root, _dirs, filenames in os.walk(resolved):
+        for fname in filenames:
+            total += 1
+            ext = Path(fname).suffix.lower()
+            if ext not in _UPLOAD_ALLOWED:
+                continue
+            full = os.path.join(root, fname)
+            try:
+                size = os.path.getsize(full)
+                rel = os.path.relpath(full, resolved)
+                files.append({
+                    "name": fname,
+                    "size": size,
+                    "extension": ext,
+                    "relative_path": rel,
+                })
+                supported += 1
+            except OSError:
+                pass
+
+    return {
+        "path": resolved,
+        "files": files[:500],  # cap at 500 entries to avoid huge responses
+        "total": total,
+        "supported": supported,
+    }

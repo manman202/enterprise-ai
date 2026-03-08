@@ -13,23 +13,9 @@ import {
 } from 'recharts'
 import { AdminUser } from '@/api/auth'
 import { adminApi, knowledgeApi, healthApi, Document, DetailedHealthResponse, ServiceDetail } from '@/api/admin'
+import { analyticsApi, AnalyticsOverview, HourlyQueryPoint, DeptQueryPoint } from '@/api/analytics'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
-
-// ── Mock chart data ───────────────────────────────────────────────────────────
-
-const HOURLY_DATA = Array.from({ length: 24 }, (_, i) => ({
-  hour: `${String(i).padStart(2, '0')}:00`,
-  queries: Math.floor(Math.random() * 50),
-}))
-
-const DEPT_DATA = [
-  { dept: 'Engineering', queries: 142 },
-  { dept: 'HR',          queries: 87  },
-  { dept: 'Finance',     queries: 63  },
-  { dept: 'Legal',       queries: 41  },
-  { dept: 'Operations',  queries: 29  },
-]
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -103,15 +89,17 @@ function KpiCard({ icon, label, value, subtitle }: KpiCardProps) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const [users,     setUsers]     = useState<AdminUser[] | null>(null)
-  const [docs,      setDocs]      = useState<Document[]  | null>(null)
-  const [health,    setHealth]    = useState<DetailedHealthResponse | null>(null)
-  const [refreshing, setRefreshing] = useState(false)
-  const [countdown,  setCountdown]  = useState(REFRESH_INTERVAL)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [users,        setUsers]        = useState<AdminUser[] | null>(null)
+  const [docs,         setDocs]         = useState<Document[]  | null>(null)
+  const [health,       setHealth]       = useState<DetailedHealthResponse | null>(null)
+  const [overview,     setOverview]     = useState<AnalyticsOverview | null>(null)
+  const [hourlyData,   setHourlyData]   = useState<HourlyQueryPoint[]>([])
+  const [deptData,     setDeptData]     = useState<DeptQueryPoint[]>([])
+  const [refreshing,   setRefreshing]   = useState(false)
+  const [countdown,    setCountdown]    = useState(REFRESH_INTERVAL)
+  const [lastUpdated,  setLastUpdated]  = useState<Date | null>(null)
 
-  // Keep a ref for the interval so we can clear it on cleanup
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const intervalRef  = useRef<ReturnType<typeof setInterval> | null>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   async function fetchHealth() {
@@ -131,6 +119,9 @@ export default function DashboardPage() {
   function fetchAll() {
     adminApi.listUsers().then(setUsers).catch(() => setUsers(null))
     knowledgeApi.listDocuments().then(setDocs).catch(() => setDocs(null))
+    analyticsApi.overview().then(setOverview).catch(() => setOverview(null))
+    analyticsApi.queriesPerHour().then(setHourlyData).catch(() => setHourlyData([]))
+    analyticsApi.queriesPerDepartment(7).then(setDeptData).catch(() => setDeptData([]))
     fetchHealth()
   }
 
@@ -173,13 +164,13 @@ export default function DashboardPage() {
         <KpiCard
           icon={<MessageSquare size={20} />}
           label="Queries Today"
-          value="—"
-          subtitle="analytics in Phase 9"
+          value={overview != null ? overview.queries_today : '—'}
+          subtitle={overview != null ? `${overview.active_users_today} active users` : 'loading…'}
         />
         <KpiCard
           icon={<FileText size={20} />}
           label="Documents Indexed"
-          value={docs != null ? docs.length : '—'}
+          value={overview != null ? overview.documents_indexed : (docs != null ? docs.length : '—')}
           subtitle="in knowledge base"
         />
         <KpiCard
@@ -200,32 +191,44 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Row 2 — Charts */}
+      {/* Row 2 — Charts (real data) */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="mb-4 text-sm font-semibold text-gray-700">Queries (last 24 h)</h2>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={HOURLY_DATA} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="hour" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={3} />
-              <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} />
-              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 6, border: '1px solid #e5e7eb' }} />
-              <Line type="monotone" dataKey="queries" stroke="#1e3a5f" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-            </LineChart>
-          </ResponsiveContainer>
+          {hourlyData.length > 0 && hourlyData.some((d) => d.count > 0) ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={hourlyData} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={3} />
+                <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} allowDecimals={false} />
+                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 6, border: '1px solid #e5e7eb' }} />
+                <Line type="monotone" dataKey="count" stroke="#1e3a5f" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-[220px] items-center justify-center text-sm text-gray-400">
+              No queries in the last 24 hours
+            </div>
+          )}
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-sm font-semibold text-gray-700">Queries by Department</h2>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={DEPT_DATA} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="dept" tick={{ fontSize: 10, fill: '#9ca3af' }} />
-              <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} />
-              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 6, border: '1px solid #e5e7eb' }} />
-              <Bar dataKey="queries" fill="#1e3a5f" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <h2 className="mb-4 text-sm font-semibold text-gray-700">Queries by Department (last 7 days)</h2>
+          {deptData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={deptData} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="department" tick={{ fontSize: 10, fill: '#9ca3af' }} />
+                <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} allowDecimals={false} />
+                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 6, border: '1px solid #e5e7eb' }} />
+                <Bar dataKey="count" fill="#1e3a5f" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-[220px] items-center justify-center text-sm text-gray-400">
+              No department data yet
+            </div>
+          )}
         </div>
       </div>
 

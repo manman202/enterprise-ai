@@ -7,8 +7,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Plus, RefreshCw, Edit2, Trash2, Power, PowerOff, ChevronDown, ChevronRight,
-  HardDrive, Server, Mail, FolderOpen, Cloud, Info, LucideIcon,
+  HardDrive, Server, Mail, FolderOpen, Cloud, Info, LucideIcon, UploadCloud,
 } from 'lucide-react'
+import UploadModal from '@/components/knowledge/UploadModal'
 import {
   KnowledgeSource, KnowledgeSourceCreate, SyncHistoryEntry, SourceType,
   knowledgeSourcesApi,
@@ -426,7 +427,8 @@ export default function KnowledgePage() {
   const [editing,    setEditing]    = useState<KnowledgeSource | null>(null)
   const [syncing,    setSyncing]    = useState<string | null>(null)
   const [deleting,   setDeleting]   = useState<string | null>(null)
-  const [expanded,   setExpanded]   = useState<string | null>(null)  // expanded row for sync history
+  const [expanded,   setExpanded]   = useState<string | null>(null)
+  const [uploading,  setUploading]  = useState<KnowledgeSource | null>(null)  // upload modal target
 
   function load() {
     setLoading(true)
@@ -629,6 +631,17 @@ export default function KnowledgePage() {
                       </td>
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Upload files — local sources only */}
+                          {source.source_type === 'local' && (
+                            <button
+                              onClick={() => setUploading(source)}
+                              title="Upload files"
+                              className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-[#1e3a5f]"
+                            >
+                              <UploadCloud size={14} />
+                            </button>
+                          )}
+
                           {/* Sync now */}
                           <button
                             disabled={syncing === source.id || source.status === 'syncing'}
@@ -714,12 +727,21 @@ export default function KnowledgePage() {
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Add/Edit modal */}
       {(modal === 'add' || modal === 'edit') && (
         <SourceModal
           editing={modal === 'edit' ? editing : null}
           onClose={() => { setModal(null); setEditing(null) }}
           onSaved={handleSaved}
+        />
+      )}
+
+      {/* Upload modal — local sources only */}
+      {uploading && (
+        <UploadModal
+          source={uploading}
+          onClose={() => setUploading(null)}
+          onDone={() => { setUploading(null); load() }}
         />
       )}
 

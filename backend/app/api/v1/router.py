@@ -5,7 +5,7 @@ WebSocket routes are registered on the FastAPI app directly in main.py.
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import admin, auth, chat, documents, health, knowledge_sources, search, settings
+from app.api.v1.endpoints import admin, analytics, auth, chat, documents, health, knowledge_sources, search, settings
 
 router = APIRouter(prefix="/api/v1")
 
@@ -32,3 +32,6 @@ router.include_router(search.router, tags=["search"])
 
 # Knowledge source connectors (admin only)
 router.include_router(knowledge_sources.router, tags=["knowledge-sources"])
+
+# Analytics (admin only)
+router.include_router(analytics.router, tags=["analytics"])
