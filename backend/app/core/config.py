@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     # App
     app_env: str = "development"
     secret_key: str = "changeme"
+    jwt_expire_hours: int = 8
 
     # PostgreSQL
     postgres_host: str = "aiyedun-postgres"
