@@ -1,0 +1,26 @@
+# Node modules — npm ci runs inside Docker
+node_modules/
+
+# Build output — rebuilt inside Docker
+dist/
+
+# Dev tooling
+.env
+*.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+
+# Test artifacts
+coverage/
+
+# Editor
+.vscode/
+.idea/
+
+# Docs
+*.md
+CLAUDE.md

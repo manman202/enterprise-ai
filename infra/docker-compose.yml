@@ -1,5 +1,3 @@
-version: '3.8'
-
 # ── Networks ─────────────────────────────────────────────────────────────────
 networks:
   aiyedun-internal:   # AI services + backend only — never exposed

@@ -1,0 +1,32 @@
+# Python virtual environment — never copy into image (pip install runs inside Docker)
+.venv/
+venv/
+
+# Test and cache artifacts
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.coverage
+coverage.xml
+htmlcov/
+
+# Dev tooling
+.env
+*.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+
+# Editor
+.vscode/
+.idea/
+
+# Docs / local notes
+*.md
+!README.md
+CLAUDE.md
