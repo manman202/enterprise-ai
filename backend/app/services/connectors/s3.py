@@ -6,7 +6,6 @@ Tracks ETags to skip files that haven't changed since the last sync.
 
 import asyncio
 import logging
-from datetime import datetime
 from typing import Optional
 
 from app.services.connectors.base import BaseConnector, ConnectionResult, FileInfo, SyncResult

@@ -6,12 +6,8 @@ Supports two protocols:
 Ingests email body + attachments as documents with sender/date/subject metadata.
 """
 
-import email
 import imaplib
-import io
 import logging
-from datetime import datetime
-from typing import Optional
 
 from app.services.connectors.base import BaseConnector, ConnectionResult, FileInfo, SyncResult
 
@@ -46,8 +42,7 @@ class ExchangeConnector(BaseConnector):
     def _ews_account(self):
         """Build an exchangelib Account object for EWS access."""
         try:
-            from exchangelib import Account, Configuration, Credentials, DELEGATE  # type: ignore[import]
-            from exchangelib.protocol import BaseProtocol  # type: ignore[import]
+            from exchangelib import DELEGATE, Account, Configuration, Credentials  # type: ignore[import]
         except ImportError:
             raise RuntimeError("exchangelib is not installed. Add 'exchangelib' to requirements.txt.")
 
@@ -154,8 +149,6 @@ class ExchangeConnector(BaseConnector):
     async def download_file(self, file_id: str) -> bytes:
         """Fetch raw email bytes by ID."""
         if self.protocol == "ews":
-            from exchangelib.items import Message  # type: ignore[import]
-
             account = self._ews_account()
             item = account.fetch(ids=[(file_id, None)])
             msg = list(item)[0]
