@@ -1,15 +1,26 @@
 /**
  * Knowledge Sources Manager — full CRUD for connector-based data sources.
  * Supports: SharePoint, SMB, Exchange, Local Folder, S3-compatible storage.
- * Features: Add/edit multi-step modal, test connection, manual sync, sync history.
+ *
+ * Fixes:
+ *  - Local step 2 now offers "Use VPS Path" vs "Upload Files Now" cards
+ *  - FileDropZone is embedded for the upload flow
+ *  - Toast notifications on all actions
+ *  - Loading skeletons while fetching
+ *  - SVG empty state with Add Source CTA
+ *  - Confirm delete modal (replaces window.confirm)
  */
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Plus, RefreshCw, Edit2, Trash2, Power, PowerOff, ChevronDown, ChevronRight,
-  HardDrive, Server, Mail, FolderOpen, Cloud, Info, LucideIcon, UploadCloud,
+  Plus, RefreshCw, Edit2, Trash2, Power, PowerOff,
+  ChevronDown, ChevronRight,
+  HardDrive, Server, Mail, FolderOpen, Cloud, Info,
+  LucideIcon, UploadCloud,
 } from 'lucide-react'
 import UploadModal from '@/components/knowledge/UploadModal'
+import FileDropZone, { UploadResult } from '@/components/knowledge/FileDropZone'
+import { useToast, ToastContainer } from '@/components/ui/Toast'
 import {
   KnowledgeSource, KnowledgeSourceCreate, SyncHistoryEntry, SourceType,
   knowledgeSourcesApi,
@@ -22,14 +33,16 @@ import { Spinner } from '@/components/ui/Spinner'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const DEPARTMENTS = ['Engineering', 'HR', 'Finance', 'Legal', 'Operations', 'IT', 'Management', 'General']
+const DEPARTMENTS = [
+  'Engineering', 'HR', 'Finance', 'Legal', 'Operations', 'IT', 'Management', 'General',
+]
 
 const SOURCE_TYPE_META: Record<SourceType, { label: string; Icon: LucideIcon }> = {
-  sharepoint: { label: 'SharePoint',      Icon: Cloud       },
-  smb:        { label: 'SMB File Server', Icon: Server      },
-  exchange:   { label: 'Exchange Email',  Icon: Mail        },
-  local:      { label: 'Local Folder',    Icon: FolderOpen  },
-  s3:         { label: 'S3 Storage',      Icon: HardDrive   },
+  sharepoint: { label: 'SharePoint',      Icon: Cloud      },
+  smb:        { label: 'SMB File Server', Icon: Server     },
+  exchange:   { label: 'Exchange Email',  Icon: Mail       },
+  local:      { label: 'Local Folder',    Icon: FolderOpen },
+  s3:         { label: 'S3 Storage',      Icon: HardDrive  },
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -40,9 +53,9 @@ function formatDate(iso: string | null): string {
 }
 
 function statusBadgeVariant(status: KnowledgeSource['status']): 'ok' | 'error' | 'warning' | 'neutral' {
-  if (status === 'active')   return 'ok'
-  if (status === 'error')    return 'error'
-  if (status === 'syncing')  return 'warning'
+  if (status === 'active')  return 'ok'
+  if (status === 'error')   return 'error'
+  if (status === 'syncing') return 'warning'
   return 'neutral'
 }
 
@@ -51,7 +64,7 @@ function truncate(s: string | null | undefined, n = 40): string {
   return s.length > n ? s.slice(0, n) + '…' : s
 }
 
-// ── Source Config Form ────────────────────────────────────────────────────────
+// ── Config Form ───────────────────────────────────────────────────────────────
 
 interface ConfigFormProps {
   sourceType: SourceType
@@ -101,10 +114,10 @@ function ConfigForm({ sourceType, config, onChange }: ConfigFormProps) {
     case 'exchange':
       return (
         <div className="space-y-3">
-          {field('server',      'Server',       'mail.company.com')}
-          {field('username',    'Username',     'user@company.com')}
-          {field('password',    'Password',     '', 'password')}
-          {field('folder_path', 'Folder Path',  'Inbox/HR Archive')}
+          {field('server',      'Server',      'mail.company.com')}
+          {field('username',    'Username',    'user@company.com')}
+          {field('password',    'Password',    '', 'password')}
+          {field('folder_path', 'Folder Path', 'Inbox/HR Archive')}
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-700">Protocol</label>
             <select
@@ -120,12 +133,8 @@ function ConfigForm({ sourceType, config, onChange }: ConfigFormProps) {
         </div>
       )
     case 'local':
-      return (
-        <div className="space-y-3">
-          {field('path', 'Absolute Path on VPS', '/mnt/shares/HR',
-            'text', 'Make sure this folder is mounted on the VPS and readable by the backend container.')}
-        </div>
-      )
+      // Handled separately in SourceModal with two-card selector
+      return null
     case 's3':
       return (
         <div className="space-y-3">
@@ -141,31 +150,78 @@ function ConfigForm({ sourceType, config, onChange }: ConfigFormProps) {
   }
 }
 
+// ── Confirm Delete Modal ──────────────────────────────────────────────────────
+
+function ConfirmDeleteModal({
+  name,
+  loading,
+  onConfirm,
+  onCancel,
+}: {
+  name: string
+  loading: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+        <h3 className="text-base font-semibold text-gray-900">Delete source?</h3>
+        <p className="mt-2 text-sm text-gray-500">
+          Delete <span className="font-medium text-gray-800">"{name}"</span>?
+          This will remove the source and all its indexed documents from Aiyedun.
+        </p>
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <Button variant="secondary" size="sm" onClick={onCancel} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            loading={loading}
+            onClick={onConfirm}
+            className="bg-red-600 hover:bg-red-700"
+          >
+            Delete
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Add/Edit Modal ────────────────────────────────────────────────────────────
+
+type LocalMode = 'vps' | 'upload'
 
 interface ModalProps {
   editing: KnowledgeSource | null
   onClose: () => void
   onSaved: (source: KnowledgeSource) => void
+  onToast: (type: 'success' | 'error', msg: string) => void
 }
 
-function SourceModal({ editing, onClose, onSaved }: ModalProps) {
-  const [step, setStep] = useState<1 | 2 | 3>(editing ? 2 : 1)
+function SourceModal({ editing, onClose, onSaved, onToast }: ModalProps) {
+  type Step = 1 | 2 | 3 | 'upload'
+  const [step, setStep]             = useState<Step>(editing ? 2 : 1)
   const [sourceType, setSourceType] = useState<SourceType>(editing?.source_type ?? 'local')
-  const [name, setName] = useState(editing?.name ?? '')
+  const [name, setName]             = useState(editing?.name ?? '')
   const [department, setDepartment] = useState(editing?.department ?? '')
-  const [config, setConfig] = useState<Record<string, string>>(() => {
-    if (editing?.config) return Object.fromEntries(Object.entries(editing.config).map(([k, v]) => [k, String(v)]))
+  const [config, setConfig]         = useState<Record<string, string>>(() => {
+    if (editing?.config) return Object.fromEntries(
+      Object.entries(editing.config).map(([k, v]) => [k, String(v)])
+    )
     return {}
   })
-  const [testing, setTesting] = useState(false)
+  const [localMode, setLocalMode]   = useState<LocalMode>('vps')
+  const [testing, setTesting]       = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; files_found?: number } | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving]         = useState(false)
+  const [error, setError]           = useState<string | null>(null)
+  const [createdSource, setCreatedSource] = useState<KnowledgeSource | null>(null)
 
   function handleConfigChange(key: string, value: string) {
     setConfig((prev) => ({ ...prev, [key]: value }))
-    setTestResult(null)  // reset test when config changes
+    setTestResult(null)
   }
 
   async function handleTest() {
@@ -173,7 +229,9 @@ function SourceModal({ editing, onClose, onSaved }: ModalProps) {
     setTestResult(null)
     setError(null)
     try {
-      const result = await knowledgeSourcesApi.testConnection(sourceType, config as Record<string, unknown>)
+      const result = await knowledgeSourcesApi.testConnection(
+        sourceType, config as Record<string, unknown>
+      )
       setTestResult(result)
     } catch (e) {
       setTestResult({ success: false, message: e instanceof Error ? e.message : 'Test failed' })
@@ -190,7 +248,8 @@ function SourceModal({ editing, onClose, onSaved }: ModalProps) {
       let saved: KnowledgeSource
       if (editing) {
         saved = await knowledgeSourcesApi.update(editing.id, {
-          name, department: department || undefined, config: config as Record<string, unknown>,
+          name, department: department || undefined,
+          config: config as Record<string, unknown>,
         })
       } else {
         const body: KnowledgeSourceCreate = {
@@ -207,20 +266,50 @@ function SourceModal({ editing, onClose, onSaved }: ModalProps) {
     }
   }
 
+  /** For "Upload Files Now" — create source first, then go to upload step */
+  async function handleSaveAndUpload() {
+    if (!name.trim()) { setError('Name is required'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      const body: KnowledgeSourceCreate = {
+        name, department: department || undefined, source_type: 'local',
+        config: {}, is_active: true,
+      }
+      const saved = await knowledgeSourcesApi.create(body)
+      setCreatedSource(saved)
+      setStep('upload')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not create source')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleUploadDone(results: UploadResult[]) {
+    const ok = results.filter((r) => r.status === 'ingested').length
+    onToast('success', `${ok} file${ok !== 1 ? 's' : ''} ingested into "${name}"`)
+    if (createdSource) onSaved(createdSource)
+    else onClose()
+  }
+
+  // Dynamic modal height — upload step needs more space
+  const isUploadStep = step === 'upload'
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+      <div className={`w-full rounded-2xl bg-white shadow-2xl ${isUploadStep ? 'max-w-2xl' : 'max-w-lg'}`}>
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <h2 className="text-base font-semibold text-gray-900">
-            {editing ? 'Edit Source' : 'Add Knowledge Source'}
+            {editing ? 'Edit Source' : isUploadStep ? `Upload to "${name}"` : 'Add Knowledge Source'}
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl font-light">×</button>
         </div>
 
-        {/* Step indicators (only for new) */}
-        {!editing && (
-          <div className="flex items-center gap-0 border-b border-gray-100 px-6 py-3">
+        {/* Step indicators (not for edit or upload step) */}
+        {!editing && step !== 'upload' && (
+          <div className="flex items-center border-b border-gray-100 px-6 py-3">
             {([1, 2, 3] as const).map((s) => (
               <div key={s} className="flex items-center">
                 <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold
@@ -236,8 +325,9 @@ function SourceModal({ editing, onClose, onSaved }: ModalProps) {
           </div>
         )}
 
-        <div className="max-h-[60vh] overflow-y-auto px-6 py-5">
-          {/* Step 1 — Choose type */}
+        <div className="max-h-[65vh] overflow-y-auto px-6 py-5">
+
+          {/* ── Step 1: Choose type ── */}
           {step === 1 && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {(Object.entries(SOURCE_TYPE_META) as [SourceType, typeof SOURCE_TYPE_META[SourceType]][]).map(
@@ -258,7 +348,7 @@ function SourceModal({ editing, onClose, onSaved }: ModalProps) {
             </div>
           )}
 
-          {/* Step 2 — Configure */}
+          {/* ── Step 2: Configure ── */}
           {step === 2 && (
             <div className="space-y-4">
               <div>
@@ -267,7 +357,7 @@ function SourceModal({ editing, onClose, onSaved }: ModalProps) {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. HR SharePoint"
+                  placeholder="e.g. HR Documents"
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm
                              focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
@@ -284,40 +374,114 @@ function SourceModal({ editing, onClose, onSaved }: ModalProps) {
                   {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
+
               <div className="border-t border-gray-100 pt-3">
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
                   {SOURCE_TYPE_META[sourceType].label} Settings
                 </p>
-                <ConfigForm
-                  sourceType={sourceType}
-                  config={config}
-                  onChange={handleConfigChange}
-                />
+
+                {/* ── LOCAL: two-card selector ── */}
+                {sourceType === 'local' ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* OPTION A — VPS Path */}
+                      <button
+                        type="button"
+                        onClick={() => setLocalMode('vps')}
+                        className={[
+                          'flex flex-col items-start gap-2 rounded-xl border-2 p-4 text-left transition-colors',
+                          localMode === 'vps'
+                            ? 'border-[#1e3a5f] bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50',
+                        ].join(' ')}
+                      >
+                        <Server size={20} className="text-[#1e3a5f]" />
+                        <div>
+                          <p className="text-xs font-semibold text-gray-800">Use VPS Path</p>
+                          <p className="mt-0.5 text-[11px] text-gray-500">
+                            For folders already mounted on the server
+                          </p>
+                        </div>
+                      </button>
+
+                      {/* OPTION B — Upload from PC */}
+                      <button
+                        type="button"
+                        onClick={() => setLocalMode('upload')}
+                        className={[
+                          'flex flex-col items-start gap-2 rounded-xl border-2 p-4 text-left transition-colors',
+                          localMode === 'upload'
+                            ? 'border-[#1e3a5f] bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50',
+                        ].join(' ')}
+                      >
+                        <UploadCloud size={20} className="text-[#1e3a5f]" />
+                        <div>
+                          <p className="text-xs font-semibold text-gray-800">Upload Files Now</p>
+                          <p className="mt-0.5 text-[11px] text-gray-500">
+                            Drag & drop or browse from your PC
+                          </p>
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* VPS path input — only when option A selected */}
+                    {localMode === 'vps' && (
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-gray-700">
+                          Absolute Path on VPS
+                        </label>
+                        <input
+                          type="text"
+                          value={config['path'] ?? ''}
+                          onChange={(e) => handleConfigChange('path', e.target.value)}
+                          placeholder="/mnt/shares/HR"
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm
+                                     focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        />
+                        <p className="mt-1 text-xs text-gray-400">
+                          Make sure this folder is mounted on the VPS and readable by the backend container.
+                        </p>
+                      </div>
+                    )}
+
+                    {localMode === 'upload' && (
+                      <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                        The source will be created and you'll be taken directly to the upload screen.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Non-local: existing config form */
+                  <ConfigForm
+                    sourceType={sourceType}
+                    config={config}
+                    onChange={handleConfigChange}
+                  />
+                )}
               </div>
             </div>
           )}
 
-          {/* Step 3 — Test & Save */}
+          {/* ── Step 3: Test & Save ── */}
           {step === 3 && (
             <div className="space-y-5">
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
                 <p className="text-sm font-medium text-gray-700">{name}</p>
-                <p className="text-xs text-gray-400">{SOURCE_TYPE_META[sourceType].label} · {department || 'No department'}</p>
+                <p className="text-xs text-gray-400">
+                  {SOURCE_TYPE_META[sourceType].label} · {department || 'No department'}
+                </p>
               </div>
 
               <div>
-                <Button
-                  variant="secondary"
-                  loading={testing}
-                  onClick={handleTest}
-                  className="w-full"
-                >
+                <Button variant="secondary" loading={testing} onClick={handleTest} className="w-full">
                   Test Connection
                 </Button>
-
                 {testResult && (
                   <div className={`mt-3 flex items-start gap-2 rounded-lg px-4 py-3 text-sm
-                    ${testResult.success ? 'border border-green-200 bg-green-50 text-green-800' : 'border border-red-200 bg-red-50 text-red-700'}`}>
+                    ${testResult.success
+                      ? 'border border-green-200 bg-green-50 text-green-800'
+                      : 'border border-red-200 bg-red-50 text-red-700'}`}>
                     <span className="mt-0.5 text-base">{testResult.success ? '✓' : '✗'}</span>
                     <span>
                       {testResult.message}
@@ -328,43 +492,79 @@ function SourceModal({ editing, onClose, onSaved }: ModalProps) {
               </div>
 
               {error && (
-                <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
+                <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {error}
+                </p>
               )}
             </div>
           )}
+
+          {/* ── Upload step: embedded FileDropZone ── */}
+          {step === 'upload' && createdSource && (
+            <FileDropZone
+              sourceId={createdSource.id}
+              sourceName={createdSource.name}
+              embedded
+              onDone={handleUploadDone}
+              onCancel={onClose}
+            />
+          )}
+
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between border-t border-gray-100 px-6 py-4">
-          <div>
-            {step > 1 && !editing && (
-              <Button variant="secondary" size="sm" onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)}>
-                Back
-              </Button>
-            )}
+        {/* Footer — hidden during upload step (FileDropZone has its own) */}
+        {step !== 'upload' && (
+          <div className="flex items-center justify-between border-t border-gray-100 px-6 py-4">
+            <div>
+              {step > 1 && !editing && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setStep((s) => (typeof s === 'number' ? Math.max(1, s - 1) as 1 | 2 | 3 : 2))}
+                >
+                  Back
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
+
+              {step === 1 && (
+                <Button size="sm" onClick={() => setStep(2)}>Next →</Button>
+              )}
+
+              {step === 2 && sourceType !== 'local' && (
+                <Button size="sm" onClick={() => setStep(3)} disabled={!name.trim()}>
+                  Next →
+                </Button>
+              )}
+
+              {step === 2 && sourceType === 'local' && localMode === 'vps' && (
+                <Button size="sm" onClick={() => setStep(3)} disabled={!name.trim()}>
+                  Next →
+                </Button>
+              )}
+
+              {step === 2 && sourceType === 'local' && localMode === 'upload' && (
+                <Button size="sm" loading={saving} onClick={handleSaveAndUpload} disabled={!name.trim()}>
+                  <UploadCloud size={13} />
+                  Create & Upload →
+                </Button>
+              )}
+
+              {(step === 3 || editing) && (
+                <Button
+                  size="sm"
+                  loading={saving}
+                  disabled={!editing && !testResult?.success}
+                  onClick={handleSave}
+                >
+                  {editing ? 'Save Changes' : 'Save Source'}
+                </Button>
+              )}
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
-            {step === 1 && (
-              <Button size="sm" onClick={() => setStep(2)}>Next →</Button>
-            )}
-            {step === 2 && (
-              <Button size="sm" onClick={() => setStep(3)} disabled={!name.trim()}>
-                Next →
-              </Button>
-            )}
-            {(step === 3 || editing) && (
-              <Button
-                size="sm"
-                loading={saving}
-                disabled={!editing && !testResult?.success}
-                onClick={handleSave}
-              >
-                {editing ? 'Save Changes' : 'Save Source'}
-              </Button>
-            )}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   )
@@ -378,12 +578,11 @@ function SyncHistoryPanel({ sourceId }: { sourceId: string }) {
 
   useEffect(() => {
     knowledgeSourcesApi.syncHistory(sourceId)
-      .then(setHistory)
-      .catch(() => setHistory([]))
+      .then(setHistory).catch(() => setHistory([]))
       .finally(() => setLoading(false))
   }, [sourceId])
 
-  if (loading) return <div className="py-4 text-center text-sm text-gray-400"><Spinner size="sm" /></div>
+  if (loading) return <div className="py-4 text-center"><Spinner size="sm" /></div>
   if (history.length === 0) return <p className="py-4 text-center text-sm text-gray-400">No sync history yet.</p>
 
   return (
@@ -403,11 +602,9 @@ function SyncHistoryPanel({ sourceId }: { sourceId: string }) {
               <td className="py-2 pr-4 text-gray-500">{formatDate(entry.started_at)}</td>
               <td className="py-2 pr-4 text-gray-700">{entry.files_processed ?? '—'}</td>
               <td className="py-2 pr-4">
-                <Badge variant={entry.status === 'success' ? 'ok' : 'error'}>
-                  {entry.status}
-                </Badge>
+                <Badge variant={entry.status === 'success' ? 'ok' : 'error'}>{entry.status}</Badge>
               </td>
-              <td className="py-2 text-red-500 max-w-xs truncate">{entry.error ?? ''}</td>
+              <td className="max-w-xs truncate py-2 text-red-500">{entry.error ?? ''}</td>
             </tr>
           ))}
         </tbody>
@@ -416,90 +613,143 @@ function SyncHistoryPanel({ sourceId }: { sourceId: string }) {
   )
 }
 
+// ── Skeleton row ──────────────────────────────────────────────────────────────
+
+function SkeletonRow() {
+  return (
+    <tr className="border-t border-gray-100">
+      {Array.from({ length: 9 }).map((_, i) => (
+        <td key={i} className="px-4 py-3">
+          <div className="h-3 animate-pulse rounded bg-gray-100" style={{ width: `${40 + (i % 3) * 20}%` }} />
+        </td>
+      ))}
+    </tr>
+  )
+}
+
+// ── Empty state SVG ───────────────────────────────────────────────────────────
+
+function EmptyState({ onAdd }: { onAdd: () => void }) {
+  return (
+    <tr>
+      <td colSpan={9}>
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          {/* Simple folder+plus SVG */}
+          <svg width="72" height="60" viewBox="0 0 72 60" fill="none" aria-hidden>
+            <rect x="2" y="16" width="68" height="40" rx="6" fill="#f1f5f9" stroke="#e2e8f0" strokeWidth="2" />
+            <path d="M2 22c0-3.314 2.686-6 6-6h20l6 8H64c3.314 0 6 2.686 6 6v20c0 3.314-2.686 6-6 6H8c-3.314 0-6-2.686-6-6V22z" fill="#e2e8f0" />
+            <circle cx="52" cy="38" r="12" fill="#1e3a5f" />
+            <line x1="52" y1="32" x2="52" y2="44" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+            <line x1="46" y1="38" x2="58" y2="38" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
+          <div className="text-center">
+            <p className="text-base font-semibold text-gray-700">No knowledge sources yet</p>
+            <p className="mt-1 text-sm text-gray-400">
+              Add your first source to start feeding Aiyedun
+            </p>
+          </div>
+          <Button onClick={onAdd}>
+            <Plus size={14} /> Add Source
+          </Button>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function KnowledgePage() {
+  const { toasts, toast, dismiss } = useToast()
+
   const [sources,    setSources]    = useState<KnowledgeSource[]>([])
   const [docs,       setDocs]       = useState<Document[]>([])
   const [loading,    setLoading]    = useState(true)
-  const [error,      setError]      = useState<string | null>(null)
   const [modal,      setModal]      = useState<'add' | 'edit' | null>(null)
   const [editing,    setEditing]    = useState<KnowledgeSource | null>(null)
   const [syncing,    setSyncing]    = useState<string | null>(null)
-  const [deleting,   setDeleting]   = useState<string | null>(null)
   const [expanded,   setExpanded]   = useState<string | null>(null)
-  const [uploading,  setUploading]  = useState<KnowledgeSource | null>(null)  // upload modal target
+  const [uploading,  setUploading]  = useState<KnowledgeSource | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<KnowledgeSource | null>(null)
+  const [deleting,   setDeleting]   = useState(false)
 
   function load() {
     setLoading(true)
-    Promise.all([
-      knowledgeSourcesApi.list(),
-      knowledgeApi.listDocuments(),
-    ])
+    Promise.all([knowledgeSourcesApi.list(), knowledgeApi.listDocuments()])
       .then(([srcs, d]) => { setSources(srcs); setDocs(d) })
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => toast('error', e.message))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [])
 
-  // Compute stats
   const activeSources = useMemo(() => sources.filter((s) => s.is_active).length, [sources])
   const lastSync = useMemo(() => {
     const dates = sources.map((s) => s.last_sync_at).filter(Boolean) as string[]
-    if (!dates.length) return null
-    return dates.sort().reverse()[0]
+    return dates.length ? dates.sort().reverse()[0] : null
   }, [sources])
   const errorSources = useMemo(() => sources.filter((s) => s.status === 'error'), [sources])
 
-  // Sync handler
   async function handleSync(source: KnowledgeSource) {
     setSyncing(source.id)
-    setError(null)
     try {
       await knowledgeSourcesApi.sync(source.id)
-      // Optimistically set status to syncing
       setSources((prev) => prev.map((s) => s.id === source.id ? { ...s, status: 'syncing' } : s))
+      toast('success', `Sync triggered for "${source.name}"`)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sync failed')
+      toast('error', e instanceof Error ? e.message : 'Sync failed')
     } finally {
       setSyncing(null)
     }
   }
 
-  // Toggle active
   async function handleToggle(source: KnowledgeSource) {
     try {
       const updated = await knowledgeSourcesApi.update(source.id, { is_active: !source.is_active })
       setSources((prev) => prev.map((s) => s.id === source.id ? updated : s))
+      toast('success', `"${source.name}" ${updated.is_active ? 'activated' : 'deactivated'}`)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Update failed')
+      toast('error', e instanceof Error ? e.message : 'Update failed')
     }
   }
 
-  // Delete
-  async function handleDelete(source: KnowledgeSource) {
-    if (!window.confirm(`Delete "${source.name}"? This cannot be undone.`)) return
-    setDeleting(source.id)
+  async function handleDeleteConfirm() {
+    if (!deleteTarget) return
+    setDeleting(true)
     try {
-      await knowledgeSourcesApi.delete(source.id)
-      setSources((prev) => prev.filter((s) => s.id !== source.id))
+      await knowledgeSourcesApi.delete(deleteTarget.id)
+      setSources((prev) => prev.filter((s) => s.id !== deleteTarget.id))
+      toast('success', `"${deleteTarget.name}" deleted`)
+      setDeleteTarget(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Delete failed')
+      toast('error', e instanceof Error ? e.message : 'Delete failed')
     } finally {
-      setDeleting(null)
+      setDeleting(false)
     }
   }
 
-  // Modal saved callback
   function handleSaved(source: KnowledgeSource) {
     if (editing) {
       setSources((prev) => prev.map((s) => s.id === source.id ? source : s))
+      toast('success', `"${source.name}" updated`)
     } else {
       setSources((prev) => [source, ...prev])
+      toast('success', `"${source.name}" added`)
     }
     setModal(null)
     setEditing(null)
+  }
+
+  function handleUploadDone(results: UploadResult[]) {
+    const ok = results.filter((r) => r.status === 'ingested').length
+    const err = results.filter((r) => r.status !== 'ingested').length
+    if (err === 0) {
+      toast('success', `${ok} file${ok !== 1 ? 's' : ''} ingested successfully`)
+    } else {
+      toast('error', `${ok} ingested, ${err} failed`)
+    }
+    setUploading(null)
+    load()
   }
 
   return (
@@ -508,46 +758,35 @@ export default function KnowledgePage() {
         title="Knowledge Sources"
         actions={
           <Button size="sm" onClick={() => { setEditing(null); setModal('add') }}>
-            <Plus size={14} />
-            Add Source
+            <Plus size={14} /> Add Source
           </Button>
         }
       />
 
-      {/* Error banner */}
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
-
       {/* Stats bar */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-xs text-gray-400">Total Sources</p>
-          <p className="text-2xl font-bold text-gray-900">{sources.length}</p>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-xs text-gray-400">Active Sources</p>
-          <p className="text-2xl font-bold text-green-600">{activeSources}</p>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-xs text-gray-400">Last Sync</p>
-          <p className="text-sm font-semibold text-gray-700 mt-1">{formatDate(lastSync)}</p>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-xs text-gray-400">Documents Indexed</p>
-          <p className="text-2xl font-bold text-gray-900">{docs.length}</p>
-        </div>
+        {[
+          { label: 'Total Sources', value: sources.length, color: 'text-gray-900' },
+          { label: 'Active Sources', value: activeSources, color: 'text-green-600' },
+          { label: 'Last Sync', value: formatDate(lastSync), large: false },
+          { label: 'Documents Indexed', value: docs.length, color: 'text-gray-900' },
+        ].map(({ label, value, color, large = true }) => (
+          <div key={label} className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+            <p className="text-xs text-gray-400">{label}</p>
+            <p className={`${large ? 'text-2xl font-bold' : 'mt-1 text-sm font-semibold'} ${color ?? 'text-gray-700'}`}>
+              {value}
+            </p>
+          </div>
+        ))}
       </div>
 
       {/* Sources table */}
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
-                <th className="px-4 py-3 w-6" />
+                <th className="w-6 px-4 py-3" />
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Dept</th>
                 <th className="px-4 py-3">Type</th>
@@ -560,39 +799,26 @@ export default function KnowledgePage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan={9} className="py-12 text-center text-sm text-gray-400">
-                    <Spinner size="sm" />
-                  </td>
-                </tr>
+                <>{Array.from({ length: 3 }).map((_, i) => <SkeletonRow key={i} />)}</>
               ) : sources.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-16 text-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <Info size={32} className="text-gray-300" />
-                      <p className="text-sm text-gray-500">No knowledge sources configured yet.</p>
-                      <Button size="sm" onClick={() => setModal('add')}>
-                        <Plus size={13} /> Add your first source
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
+                <EmptyState onAdd={() => setModal('add')} />
               ) : (
                 sources.map((source) => {
                   const { Icon, label } = SOURCE_TYPE_META[source.source_type] ?? { Icon: Server, label: source.source_type }
                   const isExpanded = expanded === source.id
                   const pathValue = (source.config as Record<string, string> | null)?.[
                     source.source_type === 'sharepoint' ? 'site_url' :
-                    source.source_type === 'smb' ? 'server' :
-                    source.source_type === 'exchange' ? 'server' :
-                    source.source_type === 'local' ? 'path' :
+                    source.source_type === 'smb'        ? 'server' :
+                    source.source_type === 'exchange'   ? 'server' :
+                    source.source_type === 'local'      ? 'path' :
                     'bucket'
                   ] ?? '—'
 
                   return [
                     <tr
                       key={source.id}
-                      className={`border-t border-gray-100 hover:bg-gray-50 cursor-pointer ${isExpanded ? 'bg-blue-50/50' : ''}`}
+                      className={`cursor-pointer border-t border-gray-100 hover:bg-gray-50
+                        ${isExpanded ? 'bg-blue-50/50' : ''}`}
                       onClick={() => setExpanded(isExpanded ? null : source.id)}
                     >
                       <td className="px-4 py-3 text-gray-400">
@@ -606,16 +832,14 @@ export default function KnowledgePage() {
                           <span className="text-xs">{label}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-400 font-mono max-w-[160px] truncate">
+                      <td className="max-w-[160px] truncate px-4 py-3 font-mono text-xs text-gray-400">
                         {truncate(pathValue, 30)}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           <Badge variant={statusBadgeVariant(source.status)}>
                             {source.status === 'syncing' ? (
-                              <span className="flex items-center gap-1">
-                                <Spinner size="sm" />Syncing
-                              </span>
+                              <span className="flex items-center gap-1"><Spinner size="sm" />Syncing</span>
                             ) : source.status}
                           </Badge>
                           {source.status === 'error' && source.last_error && (
@@ -623,37 +847,30 @@ export default function KnowledgePage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-400">
                         {formatDate(source.last_sync_at)}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">
-                        {source.last_sync_count ?? '—'}
-                      </td>
+                      <td className="px-4 py-3 text-gray-600">{source.last_sync_count ?? '—'}</td>
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Upload files — local sources only */}
                           {source.source_type === 'local' && (
                             <button
                               onClick={() => setUploading(source)}
-                              title="Upload files"
+                              title="Upload files to this source"
                               className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-[#1e3a5f]"
                             >
                               <UploadCloud size={14} />
                             </button>
                           )}
-
-                          {/* Sync now */}
                           <button
                             disabled={syncing === source.id || source.status === 'syncing'}
                             onClick={() => handleSync(source)}
                             title="Sync now"
                             className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-[#1e3a5f]
-                                       disabled:opacity-40 disabled:cursor-not-allowed"
+                                       disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             <RefreshCw size={14} className={syncing === source.id ? 'animate-spin' : ''} />
                           </button>
-
-                          {/* Edit */}
                           <button
                             onClick={() => { setEditing(source); setModal('edit') }}
                             title="Edit"
@@ -661,31 +878,26 @@ export default function KnowledgePage() {
                           >
                             <Edit2 size={14} />
                           </button>
-
-                          {/* Toggle active */}
                           <button
                             onClick={() => handleToggle(source)}
                             title={source.is_active ? 'Deactivate' : 'Activate'}
                             className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-[#1e3a5f]"
                           >
-                            {source.is_active ? <Power size={14} className="text-green-500" /> : <PowerOff size={14} />}
+                            {source.is_active
+                              ? <Power size={14} className="text-green-500" />
+                              : <PowerOff size={14} />}
                           </button>
-
-                          {/* Delete */}
                           <button
-                            disabled={deleting === source.id}
-                            onClick={() => handleDelete(source)}
+                            onClick={() => setDeleteTarget(source)}
                             title="Delete"
-                            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500
-                                       disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
                           >
-                            {deleting === source.id ? <Spinner size="sm" /> : <Trash2 size={14} />}
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       </td>
                     </tr>,
 
-                    // Expanded sync history row
                     isExpanded && (
                       <tr key={`${source.id}-history`} className="border-t border-gray-100 bg-blue-50/30">
                         <td />
@@ -705,7 +917,7 @@ export default function KnowledgePage() {
         </div>
       </div>
 
-      {/* File watching info */}
+      {/* Sync schedule info */}
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex items-start gap-3">
           <div className="mt-0.5 rounded-lg bg-blue-50 p-2 text-[#1e3a5f]">
@@ -715,44 +927,55 @@ export default function KnowledgePage() {
             <h3 className="text-sm font-semibold text-gray-800">Sync Schedule</h3>
             <p className="mt-1 text-sm text-gray-500">
               Active sources are synced automatically every <strong>15 minutes</strong>.
-              You can also trigger a manual sync using the{' '}
-              <RefreshCw size={12} className="inline" /> button.
-              Configure additional watched paths via the{' '}
+              Trigger a manual sync with the <RefreshCw size={12} className="inline" /> button.
+              Configure additional watched paths via{' '}
               <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-700">
                 WATCHED_PATHS
               </code>{' '}
-              environment variable on the backend for real-time file ingestion.
+              on the backend for real-time ingestion.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Add/Edit modal */}
+      {/* Error sources banner */}
+      {errorSources.length > 0 && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <strong>{errorSources.length} source{errorSources.length > 1 ? 's' : ''} failed last sync:</strong>{' '}
+          {errorSources.map((s) => s.name).join(', ')}.
+          Check sync history for details.
+        </div>
+      )}
+
+      {/* Modals */}
       {(modal === 'add' || modal === 'edit') && (
         <SourceModal
           editing={modal === 'edit' ? editing : null}
           onClose={() => { setModal(null); setEditing(null) }}
           onSaved={handleSaved}
+          onToast={toast}
         />
       )}
 
-      {/* Upload modal — local sources only */}
       {uploading && (
         <UploadModal
           source={uploading}
           onClose={() => setUploading(null)}
-          onDone={() => { setUploading(null); load() }}
+          onDone={handleUploadDone}
         />
       )}
 
-      {/* Error sources warning banner */}
-      {errorSources.length > 0 && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <strong>{errorSources.length} source{errorSources.length > 1 ? 's' : ''} failed last sync:</strong>{' '}
-          {errorSources.map((s) => s.name).join(', ')}.
-          Check the sync history for details.
-        </div>
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          name={deleteTarget.name}
+          loading={deleting}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDeleteTarget(null)}
+        />
       )}
+
+      {/* Toast container */}
+      <ToastContainer toasts={toasts} dismiss={dismiss} />
     </div>
   )
 }
