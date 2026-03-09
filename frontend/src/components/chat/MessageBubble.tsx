@@ -8,6 +8,7 @@ export interface MessageBubbleProps {
   content: string
   sources?: Source[]
   timestamp?: string
+  isStreaming?: boolean
 }
 
 function formatTimestamp(ts: string): string {
@@ -19,7 +20,7 @@ function formatTimestamp(ts: string): string {
   }
 }
 
-export function MessageBubble({ role, content, sources, timestamp }: MessageBubbleProps) {
+export function MessageBubble({ role, content, sources, timestamp, isStreaming }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
   const [hovered, setHovered] = useState(false)
   const isUser = role === 'user'
@@ -62,6 +63,12 @@ export function MessageBubble({ role, content, sources, timestamp }: MessageBubb
         <div className="relative bg-white rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm text-sm text-gray-800 leading-relaxed">
           <div className="prose prose-sm max-w-none prose-p:my-1 prose-pre:bg-gray-100 prose-pre:text-gray-800 prose-code:bg-gray-100 prose-code:px-1 prose-code:rounded">
             <ReactMarkdown>{content}</ReactMarkdown>
+            {isStreaming && (
+              <span
+                className="inline-block w-0.5 h-4 bg-blue-600 ml-0.5 align-text-bottom"
+                style={{ animation: 'blink 0.8s step-end infinite' }}
+              />
+            )}
           </div>
           {hovered && (
             <button

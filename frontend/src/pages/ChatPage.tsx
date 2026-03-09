@@ -20,13 +20,9 @@ interface ChatMessage {
   content: string
   sources?: Source[]
   created_at?: string
+  isStreaming?: boolean
 }
 
-interface SendMessageResponse {
-  response: string
-  conversation_id: string
-  sources?: Source[]
-}
 
 interface HistoryResponse {
   messages: ChatMessage[]
@@ -179,38 +175,101 @@ export default function ChatPage() {
     setInputValue('')
     setLoading(true)
 
+    // Placeholder assistant message filled token by token
+    const assistantId = `assistant-${Date.now()}`
+    setMessages((prev) => [
+      ...prev,
+      { role: 'assistant', content: '', isStreaming: true, created_at: new Date().toISOString() },
+    ])
+
+    const conversationTarget = activeConvId ?? 'new'
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${proto}//${window.location.host}/ws/chat/${conversationTarget}`
+
+    let resolvedConvId: string | null = null
+
     try {
-      const body: { message: string; conversation_id?: string } = { message: content }
-      if (activeConvId) body.conversation_id = activeConvId
+      await new Promise<void>((resolve, reject) => {
+        const ws = new WebSocket(wsUrl)
 
-      const data = await api.post<SendMessageResponse>('/chat/message', body)
+        ws.onopen = () => {
+          const token = localStorage.getItem('aiyedun_token') ?? ''
+          ws.send(JSON.stringify({ message: content, token }))
+        }
 
-      const assistantMessage: ChatMessage = {
-        role: 'assistant',
-        content: data.response,
-        sources: data.sources,
-        created_at: new Date().toISOString(),
+        ws.onmessage = (event) => {
+          // Try to parse as JSON — it's either a control message or a raw token
+          try {
+            const data = JSON.parse(event.data)
+            if (data.error) {
+              reject(new Error(data.error))
+              ws.close()
+              return
+            }
+            if (data.done) {
+              resolvedConvId = data.conversation_id ?? resolvedConvId
+              // Finalise the assistant message: add sources, clear streaming flag
+              setMessages((prev) =>
+                prev.map((m, i) =>
+                  i === prev.length - 1
+                    ? { ...m, sources: data.sources ?? [], isStreaming: false }
+                    : m
+                )
+              )
+              ws.close()
+              resolve()
+              return
+            }
+          } catch {
+            // Not JSON — it's a raw token string
+          }
+          // Append raw token to last message
+          setMessages((prev) => {
+            const updated = [...prev]
+            const last = updated[updated.length - 1]
+            if (last && last.role === 'assistant') {
+              updated[updated.length - 1] = { ...last, content: last.content + event.data }
+            }
+            return updated
+          })
+        }
+
+        ws.onerror = () => reject(new Error('WebSocket connection failed'))
+        ws.onclose = (e) => {
+          if (!e.wasClean && e.code !== 1000) {
+            reject(new Error(`WebSocket closed unexpectedly (${e.code})`))
+          }
+        }
+      })
+
+      // Update conversation state after stream completes
+      if (!activeConvId && resolvedConvId) {
+        setActiveConvId(resolvedConvId)
       }
-      setMessages((prev) => [...prev, assistantMessage])
-
-      // If this was a new conversation, update the active ID and refresh list
-      if (!activeConvId && data.conversation_id) {
-        setActiveConvId(data.conversation_id)
-        await loadConversations()
-      } else if (activeConvId) {
-        // Update the conversation's updated_at in the list
-        await loadConversations()
-      }
+      await loadConversations()
     } catch (err) {
-      const errorMessage: ChatMessage = {
-        role: 'assistant',
-        content: `Sorry, something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}`,
-        created_at: new Date().toISOString(),
-      }
-      setMessages((prev) => [...prev, errorMessage])
+      // Replace the empty assistant placeholder with an error message
+      setMessages((prev) =>
+        prev.map((m, i) =>
+          i === prev.length - 1 && m.role === 'assistant'
+            ? {
+                ...m,
+                content: `Sorry, something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}`,
+                isStreaming: false,
+              }
+            : m
+        )
+      )
     } finally {
       setLoading(false)
+      // Ensure streaming flag is cleared even if we exited early
+      setMessages((prev) =>
+        prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
+      )
     }
+
+    // Suppress unused variable warning — assistantId was replaced by index tracking
+    void assistantId
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -377,9 +436,10 @@ export default function ChatPage() {
                   content={msg.content}
                   sources={msg.sources}
                   timestamp={msg.created_at}
+                  isStreaming={msg.isStreaming}
                 />
               ))}
-              {loading && <TypingIndicator />}
+              {loading && messages[messages.length - 1]?.role !== 'assistant' && <TypingIndicator />}
             </>
           )}
           <div ref={bottomRef} />
