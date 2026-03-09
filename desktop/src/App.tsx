@@ -5,12 +5,12 @@ import { ChatPage } from './pages/ChatPage'
 import './styles/theme.css'
 
 export default function App() {
-  const { user, initialized, init, logout } = useAuthStore()
+  const { user, initialized, initialize, logout } = useAuthStore()
   const [checking, setChecking] = useState(true)
 
   useEffect(() => {
-    init().finally(() => setChecking(false))
-  }, [init])
+    initialize().finally(() => setChecking(false))
+  }, [initialize])
 
   if (checking || !initialized) {
     return (

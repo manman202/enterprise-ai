@@ -8,7 +8,7 @@ let _serverUrl = ''
 export async function initServerUrl(): Promise<string> {
   try {
     const stored = await invoke<string | null>('get_server_url')
-    _serverUrl = stored ?? 'https://api.aiyedun.online'
+    _serverUrl = stored ?? import.meta.env.VITE_DEFAULT_SERVER_URL ?? 'https://api.aiyedun.online'
   } catch {
     _serverUrl = 'https://api.aiyedun.online'
   }
@@ -41,15 +41,14 @@ http.interceptors.response.use(
   (res) => res,
   (err: AxiosError) => {
     if (err.response?.status === 401) {
-      // Token expired — clear and reload
       invoke('clear_auth').catch(() => {})
-      window.location.hash = '#/login'
+      window.dispatchEvent(new CustomEvent('auth:logout'))
     }
     return Promise.reject(err)
   },
 )
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface LoginResponse {
   access_token: string
@@ -64,26 +63,19 @@ export interface UserInfo {
   is_admin: boolean
 }
 
-export async function login(username: string, password: string): Promise<LoginResponse> {
-  const params = new URLSearchParams({ username, password })
-  const res = await http.post<LoginResponse>('/api/v1/auth/login', params, {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  })
-  return res.data
-}
-
-export async function me(): Promise<UserInfo> {
-  const res = await http.get<UserInfo>('/api/v1/auth/me')
-  return res.data
-}
-
-// ── Chat ──────────────────────────────────────────────────────────────────────
-
 export interface Conversation {
   id: string
   title: string
   created_at: string
   updated_at: string
+  message_count?: number
+}
+
+export interface Source {
+  filename: string
+  department?: string
+  chunk_text?: string
+  score?: number
 }
 
 export interface Message {
@@ -94,18 +86,52 @@ export interface Message {
   created_at: string
 }
 
-export interface Source {
-  filename: string
-  chunk_text?: string
-  score?: number
+export interface ChatMessageResponse {
+  conversation_id: string
+  message_id: string
+  content: string
+  sources?: Source[]
 }
 
-export async function listConversations(): Promise<Conversation[]> {
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+export async function login(username: string, password: string): Promise<LoginResponse> {
+  const params = new URLSearchParams({ username, password })
+  const res = await http.post<LoginResponse>('/api/v1/auth/login', params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  })
+  await invoke('save_token', { token: res.data.access_token })
+  return res.data
+}
+
+export async function logout(): Promise<void> {
+  await invoke('clear_auth').catch(() => {})
+}
+
+export async function getMe(): Promise<UserInfo> {
+  const res = await http.get<UserInfo>('/api/v1/auth/me')
+  return res.data
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+
+export async function sendMessage(
+  message: string,
+  conversationId?: string | null,
+): Promise<ChatMessageResponse> {
+  const res = await http.post<ChatMessageResponse>('/api/v1/chat/message', {
+    message,
+    conversation_id: conversationId ?? null,
+  })
+  return res.data
+}
+
+export async function getConversations(): Promise<Conversation[]> {
   const res = await http.get<Conversation[]>('/api/v1/conversations')
   return res.data
 }
 
-export async function getMessages(conversationId: string): Promise<Message[]> {
+export async function getHistory(conversationId: string): Promise<Message[]> {
   const res = await http.get<Message[]>(`/api/v1/conversations/${conversationId}/messages`)
   return res.data
 }
@@ -114,35 +140,15 @@ export async function deleteConversation(id: string): Promise<void> {
   await http.delete(`/api/v1/conversations/${id}`)
 }
 
-// ── WebSocket chat ────────────────────────────────────────────────────────────
-
-export function createChatWebSocket(
-  conversationId: string | null,
-  onMessage: (data: WsMessage) => void,
-  onError: (err: Event) => void,
-): WebSocket {
-  const wsBase = _serverUrl.replace(/^https?/, (m) => (m === 'https' ? 'wss' : 'ws'))
-  const url = `${wsBase}/api/v1/chat/ws`
-  const ws = new WebSocket(url)
-
-  ws.onopen = async () => {
-    const token = await invoke<string | null>('get_token').catch(() => null)
-    ws.send(JSON.stringify({ type: 'auth', token }))
-    if (conversationId) {
-      ws.send(JSON.stringify({ type: 'resume', conversation_id: conversationId }))
-    }
-  }
-
-  ws.onmessage = (event) => {
-    try {
-      const data: WsMessage = JSON.parse(event.data)
-      onMessage(data)
-    } catch { /* ignore malformed */ }
-  }
-
-  ws.onerror = onError
-  return ws
+export async function uploadFile(sourceId: string, files: File[]): Promise<void> {
+  const form = new FormData()
+  for (const f of files) form.append('files', f)
+  await http.post(`/api/v1/knowledge-sources/${sourceId}/upload`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }
+
+// ── WebSocket streaming ────────────────────────────────────────────────────────
 
 export type WsMessage =
   | { type: 'token'; content: string }
@@ -150,3 +156,44 @@ export type WsMessage =
   | { type: 'error'; message: string }
   | { type: 'auth_ok' }
   | { type: 'auth_error'; message: string }
+
+export function streamMessage(
+  message: string,
+  conversationId: string | null,
+  onToken: (token: string) => void,
+  onDone: (convId: string, sources: Source[]) => void,
+  onError: (msg: string) => void,
+): () => void {
+  const wsBase = _serverUrl.replace(/^https?/, (m) => (m === 'https' ? 'wss' : 'ws'))
+  const ws = new WebSocket(`${wsBase}/api/v1/chat/ws`)
+
+  ws.onopen = async () => {
+    const token = await invoke<string | null>('get_token').catch(() => null)
+    ws.send(JSON.stringify({ type: 'auth', token }))
+    if (conversationId) ws.send(JSON.stringify({ type: 'resume', conversation_id: conversationId }))
+  }
+
+  ws.onmessage = (event) => {
+    let data: WsMessage
+    try { data = JSON.parse(event.data) } catch { return }
+
+    if (data.type === 'auth_ok') {
+      ws.send(JSON.stringify({ type: 'query', content: message }))
+    } else if (data.type === 'token') {
+      onToken(data.content)
+    } else if (data.type === 'done') {
+      onDone(data.conversation_id, data.sources)
+      ws.close()
+    } else if (data.type === 'error') {
+      onError(data.message)
+      ws.close()
+    } else if (data.type === 'auth_error') {
+      onError('Authentication failed')
+      ws.close()
+    }
+  }
+
+  ws.onerror = () => onError('Connection error')
+
+  return () => ws.close()
+}

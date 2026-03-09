@@ -1,19 +1,16 @@
 import { create } from 'zustand'
-import { invoke } from '@tauri-apps/api/core'
-import { login as apiLogin, me, UserInfo, initServerUrl } from '../api/client'
+import { login as apiLogin, logout as apiLogout, getMe, UserInfo, initServerUrl } from '../api/client'
 
-interface AuthState {
+export interface AuthState {
   user: UserInfo | null
   token: string | null
   loading: boolean
   initialized: boolean
 
-  init: () => Promise<void>
+  initialize: () => Promise<void>
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
 }
-
-export type { AuthState }
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
@@ -21,18 +18,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   loading: false,
   initialized: false,
 
-  init: async () => {
+  initialize: async () => {
     await initServerUrl()
     try {
-      const token = await invoke<string | null>('get_token')
-      if (token) {
-        const user = await me()
-        set({ user, token, initialized: true })
-      } else {
-        set({ initialized: true })
-      }
+      // Try fetching current user — if token valid it succeeds
+      const user = await getMe()
+      set({ user, initialized: true })
     } catch {
-      await invoke('clear_auth').catch(() => {})
       set({ user: null, token: null, initialized: true })
     }
   },
@@ -41,8 +33,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ loading: true })
     try {
       const data = await apiLogin(username, password)
-      await invoke('save_token', { token: data.access_token })
-      const user = await me()
+      const user = await getMe()
       set({ user, token: data.access_token, loading: false })
     } catch (err) {
       set({ loading: false })
@@ -51,7 +42,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-    await invoke('clear_auth').catch(() => {})
+    await apiLogout()
     set({ user: null, token: null })
   },
 }))
