@@ -91,6 +91,8 @@ services:
       OLLAMA_HOST:       aiyedun-ollama
       OLLAMA_PORT:       11434
       OLLAMA_MODEL:      ${OLLAMA_MODEL:-mistral}
+    volumes:
+      - /opt/aiyedun/uploads:/opt/aiyedun/uploads
     ports:
       - "127.0.0.1:8000:8000"
     networks:

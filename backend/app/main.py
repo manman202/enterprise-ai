@@ -10,6 +10,7 @@ Startup sequence:
 """
 
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +32,9 @@ logger = logging.getLogger(__name__)
 async def on_startup() -> None:
     """Run on every application startup."""
     logger.info("Aiyedun starting in '%s' mode", settings.app_env)
+
+    # Ensure shared uploads directory exists
+    os.makedirs("/opt/aiyedun/uploads", exist_ok=True)
 
     # Ensure DB tables exist (safe to run on every start — idempotent)
     from app.db.postgres import create_all_tables

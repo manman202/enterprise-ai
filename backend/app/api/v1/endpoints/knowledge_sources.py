@@ -379,18 +379,23 @@ async def upload_files(
     if source.source_type != "local":
         raise HTTPException(status_code=400, detail="File upload is only supported for local folder sources")
 
-    # Get the configured local path
+    # Resolve save path: use configured local path or fall back to shared uploads dir
     config = {}
     if source.config:
         try:
             config = json.loads(source.config)
         except Exception:
             pass
-    local_path = config.get("path", "")
-    if not local_path or not os.path.isdir(local_path):
+    local_path = config.get("path", "").strip()
+    if not local_path:
+        local_path = f"/opt/aiyedun/uploads/{source_id}"
+
+    try:
+        os.makedirs(local_path, exist_ok=True)
+    except OSError as e:
         raise HTTPException(
-            status_code=400,
-            detail=f"Local path '{local_path}' does not exist or is not accessible on the server",
+            status_code=500,
+            detail=f"Cannot create upload directory '{local_path}': {e}",
         )
 
     from app.services.ingestion import ingest_bytes
@@ -465,15 +470,33 @@ async def upload_files(
                 "chunks_created": 0,
             })
 
+    succeeded = sum(1 for r in results if r["status"] == "ingested")
+    failed = sum(1 for r in results if r["status"] in ("error", "rejected"))
+
+    # Update source stats
+    source.last_sync_at = datetime.utcnow()
+    source.last_sync_count = succeeded
+    source.last_sync_status = "success" if failed == 0 else ("partial" if succeeded > 0 else "failed")
+    if succeeded > 0:
+        source.status = "active"
+    await db.commit()
+
     logger.info(
-        "Upload: %d file(s) to source '%s' by %s — %d ok, %d failed",
+        "Upload: %d file(s) to source '%s' by %s — %d ok, %d failed — saved to %s",
         len(files),
         source.name,
         admin.username,
-        sum(1 for r in results if r["status"] == "ingested"),
-        sum(1 for r in results if r["status"] in ("error", "rejected")),
+        succeeded,
+        failed,
+        local_path,
     )
-    return {"uploaded": results, "total_files": len(results)}
+    return {
+        "uploaded": results,
+        "total_files": len(results),
+        "succeeded": succeeded,
+        "failed": failed,
+        "saved_to": local_path,
+    }
 
 
 # ── Scan VPS path endpoint ────────────────────────────────────────────────────
