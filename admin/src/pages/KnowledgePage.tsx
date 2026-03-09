@@ -11,7 +11,7 @@
  *  - Confirm delete modal (replaces window.confirm)
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Plus, RefreshCw, Edit2, Trash2, Power, PowerOff,
   ChevronDown, ChevronRight,
@@ -22,10 +22,10 @@ import UploadModal from '@/components/knowledge/UploadModal'
 import FileDropZone, { UploadResult } from '@/components/knowledge/FileDropZone'
 import { useToast, ToastContainer } from '@/components/ui/Toast'
 import {
-  KnowledgeSource, KnowledgeSourceCreate, SyncHistoryEntry, SourceType,
+  KnowledgeSource, KnowledgeSourceCreate, KnowledgeStats, SyncHistoryEntry, SourceType,
   knowledgeSourcesApi,
 } from '@/api/knowledge_sources'
-import { knowledgeApi, Document } from '@/api/admin'
+import { knowledgeApi } from '@/api/admin'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -663,8 +663,9 @@ export default function KnowledgePage() {
   const { toasts, toast, dismiss } = useToast()
 
   const [sources,    setSources]    = useState<KnowledgeSource[]>([])
-  const [docs,       setDocs]       = useState<Document[]>([])
+  const [stats,      setStats]      = useState<KnowledgeStats | null>(null)
   const [loading,    setLoading]    = useState(true)
+  const [loadError,  setLoadError]  = useState<string | null>(null)
   const [modal,      setModal]      = useState<'add' | 'edit' | null>(null)
   const [editing,    setEditing]    = useState<KnowledgeSource | null>(null)
   const [syncing,    setSyncing]    = useState<string | null>(null)
@@ -673,15 +674,34 @@ export default function KnowledgePage() {
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeSource | null>(null)
   const [deleting,   setDeleting]   = useState(false)
 
-  function load() {
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  async function load() {
     setLoading(true)
-    Promise.all([knowledgeSourcesApi.list(), knowledgeApi.listDocuments()])
-      .then(([srcs, d]) => { setSources(srcs); setDocs(d) })
-      .catch((e: Error) => toast('error', e.message))
-      .finally(() => setLoading(false))
+    try {
+      const [srcs, st] = await Promise.all([
+        knowledgeSourcesApi.list(),
+        knowledgeSourcesApi.stats().catch(() => null),
+      ])
+      setSources(srcs ?? [])
+      if (st) setStats(st)
+      setLoadError(null)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to load sources'
+      setLoadError(msg)
+      // Keep existing sources visible — don't clear them
+      // Auto-retry after 5 seconds
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = setTimeout(() => load(), 5000)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    return () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current) }
+  }, [])
 
   const activeSources = useMemo(() => sources.filter((s) => s.is_active).length, [sources])
   const lastSync = useMemo(() => {
@@ -769,7 +789,7 @@ export default function KnowledgePage() {
           { label: 'Total Sources', value: sources.length, color: 'text-gray-900' },
           { label: 'Active Sources', value: activeSources, color: 'text-green-600' },
           { label: 'Last Sync', value: formatDate(lastSync), large: false },
-          { label: 'Documents Indexed', value: docs.length, color: 'text-gray-900' },
+          { label: 'Documents Indexed', value: stats?.documents_indexed ?? 0, color: 'text-gray-900' },
         ].map(({ label, value, color, large = true }) => (
           <div key={label} className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
             <p className="text-xs text-gray-400">{label}</p>
@@ -779,6 +799,19 @@ export default function KnowledgePage() {
           </div>
         ))}
       </div>
+
+      {/* Load error banner */}
+      {loadError && (
+        <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+          <span className="text-sm text-red-700">⚠️ {loadError}</span>
+          <button
+            onClick={() => load()}
+            className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Sources table */}
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
