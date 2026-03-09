@@ -59,9 +59,19 @@ export interface KnowledgeSourceUpdate {
   is_active?: boolean
 }
 
+export interface KnowledgeStats {
+  total_sources: number
+  active_sources: number
+  last_sync: string | null
+  documents_indexed: number
+}
+
 // ── API client ─────────────────────────────────────────────────────────────────
 
 export const knowledgeSourcesApi = {
+  stats: () =>
+    api.get<KnowledgeStats>('/knowledge-sources/stats'),
+
   list: () =>
     api.get<KnowledgeSource[]>('/knowledge-sources'),
 

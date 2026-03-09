@@ -53,6 +53,22 @@ function fileExt(name: string): string {
   return ('.' + (name.split('.').pop() ?? '')).toLowerCase()
 }
 
+/**
+ * Detect iCloud placeholder files that haven't been downloaded from iCloud Drive.
+ * On macOS/iOS, un-downloaded iCloud files appear with a .icloud extension,
+ * often start with a dot, or have size 0 because the content isn't local.
+ */
+function isICloudPlaceholder(file: File, relativePath = ''): boolean {
+  const name = file.name.toLowerCase()
+  // .icloud extension = evicted file placeholder (e.g. .report.pdf.icloud)
+  if (name.endsWith('.icloud')) return true
+  // Path contains iCloud Drive marker
+  if (relativePath.toLowerCase().includes('icloud~') || relativePath.toLowerCase().includes('mobile documents')) return true
+  // Zero-byte file that isn't a legitimately empty text/md document
+  if (file.size === 0 && !['.txt', '.md'].includes(fileExt(file.name))) return true
+  return false
+}
+
 function extColor(name: string): string {
   const e = fileExt(name)
   if (e === '.pdf') return 'text-red-500'
@@ -111,6 +127,7 @@ interface QueuedFile {
   status: 'pending' | 'uploading' | 'done' | 'error'
   error?: string
   chunks?: number
+  icloudWarning?: boolean  // file detected as un-downloaded iCloud placeholder
 }
 
 export interface UploadResult {
@@ -157,13 +174,18 @@ export default function FileDropZone({
   // Grouped by folder prefix for display
   const grouped = groupByFolder(queue)
 
+  // iCloud placeholder detection
+  const icloudFiles = queue.filter((q) => q.icloudWarning)
+  const hasICloudFiles = icloudFiles.length > 0
+
   // ── File collection ────────────────────────────────────────────────────────
 
   function addFile(file: File, path = '') {
     const key = `${file.name}-${file.size}`
     setQueue((prev) => {
       if (prev.some((q) => `${q.file.name}-${q.file.size}` === key)) return prev
-      return [...prev, { file, relativePath: path || file.name, status: 'pending' }]
+      const icloudWarning = isICloudPlaceholder(file, path)
+      return [...prev, { file, relativePath: path || file.name, status: 'pending', icloudWarning }]
     })
   }
 
@@ -347,6 +369,25 @@ export default function FileDropZone({
       {/* ── SELECT phase ── */}
       {phase === 'select' && (
         <>
+          {/* iCloud warning banner */}
+          {hasICloudFiles && (
+            <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs">
+              <AlertCircle size={14} className="mt-0.5 shrink-0 text-amber-500" />
+              <div>
+                <p className="font-semibold text-amber-800">
+                  iCloud files not downloaded
+                </p>
+                <p className="mt-0.5 text-amber-700">
+                  {icloudFiles.length === 1
+                    ? `"${icloudFiles[0].file.name}" is`
+                    : `${icloudFiles.length} files are`}{' '}
+                  stored in iCloud but not downloaded to this device. Open the file
+                  in Finder first (right-click → Download Now), then re-add it.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Drop zone */}
           <div
             onDragEnter={onDragEnter}
@@ -451,11 +492,14 @@ export default function FileDropZone({
                       </div>
                     )}
                     {group.files.map(({ item, index }) => (
-                      <div key={index} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50">
-                        <FileIcon size={13} className={`shrink-0 ${extColor(item.file.name)}`} />
+                      <div key={index} className={`flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 ${item.icloudWarning ? 'bg-amber-50/60' : ''}`}>
+                        {item.icloudWarning
+                          ? <span title="File not downloaded from iCloud"><AlertCircle size={13} className="shrink-0 text-amber-400" /></span>
+                          : <FileIcon size={13} className={`shrink-0 ${extColor(item.file.name)}`} />
+                        }
                         <span
-                          className="flex-1 truncate text-gray-700"
-                          title={item.relativePath}
+                          className={`flex-1 truncate ${item.icloudWarning ? 'text-amber-700' : 'text-gray-700'}`}
+                          title={item.icloudWarning ? 'Not downloaded from iCloud — cannot upload' : item.relativePath}
                         >
                           {item.file.name.length > 35
                             ? item.file.name.slice(0, 34) + '…'

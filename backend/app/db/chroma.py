@@ -30,9 +30,25 @@ async def get_chroma():
 
 
 async def get_collection(name: str = DEFAULT_COLLECTION):  # type: ignore[return]
-    """Get or create a ChromaDB collection by name."""
+    """Get or create a ChromaDB collection by name.
+
+    Uses a fallback chain to work around the chromadb 1.0.0 KeyError '_type'
+    bug that occurs when get_or_create_collection() deserializes existing
+    collection metadata without an explicit embedding function.
+    """
     client = await get_chroma()
-    return await client.get_or_create_collection(name)
+    # Step 1: try get_collection (fastest path for existing collections)
+    try:
+        return await client.get_collection(name=name)
+    except Exception:
+        pass
+    # Step 2: try create_collection with get_or_create=True
+    try:
+        return await client.create_collection(name=name, get_or_create=True)
+    except Exception:
+        pass
+    # Step 3: last-resort fallback
+    return await client.get_or_create_collection(name=name)
 
 
 async def query_documents(

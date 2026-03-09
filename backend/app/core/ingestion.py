@@ -32,7 +32,43 @@ def extract_text_from_txt(filepath: str) -> str:
 
 
 def extract_text_from_pdf(filepath: str) -> str:
-    """Extract text from PDF using pypdf."""
+    """Extract text from PDF using PyMuPDF (primary), pdfminer (fallback), pypdf (last resort)."""
+    # Primary: PyMuPDF (fitz) — fastest and most reliable
+    try:
+        import fitz  # type: ignore[import]  # pymupdf
+
+        doc = fitz.open(filepath)
+        pages = []
+        for page in doc:
+            text = page.get_text()
+            if text and text.strip():
+                pages.append(text)
+        doc.close()
+        result = "\n\n".join(pages)
+        if result.strip():
+            logger.debug("PDF extracted via PyMuPDF: %d chars from '%s'", len(result), filepath)
+            return result
+        logger.debug("PyMuPDF returned empty text for '%s', trying pdfminer", filepath)
+    except ImportError:
+        logger.debug("PyMuPDF not available, falling back to pdfminer")
+    except Exception as exc:
+        logger.warning("PyMuPDF extraction failed for '%s': %s — trying pdfminer", filepath, exc)
+
+    # Fallback: pdfminer.six
+    try:
+        from pdfminer.high_level import extract_text as pdfminer_extract  # type: ignore[import]
+
+        result = pdfminer_extract(filepath)
+        if result and result.strip():
+            logger.debug("PDF extracted via pdfminer: %d chars from '%s'", len(result), filepath)
+            return result
+        logger.debug("pdfminer returned empty text for '%s', trying pypdf", filepath)
+    except ImportError:
+        logger.debug("pdfminer not available, falling back to pypdf")
+    except Exception as exc:
+        logger.warning("pdfminer extraction failed for '%s': %s — trying pypdf", filepath, exc)
+
+    # Last resort: pypdf
     try:
         from pypdf import PdfReader  # type: ignore[import]
 
@@ -42,12 +78,14 @@ def extract_text_from_pdf(filepath: str) -> str:
             text = page.extract_text()
             if text:
                 pages.append(text)
-        return "\n\n".join(pages)
+        result = "\n\n".join(pages)
+        logger.debug("PDF extracted via pypdf: %d chars from '%s'", len(result), filepath)
+        return result
     except ImportError:
-        logger.warning("pypdf not installed — cannot extract PDF text")
+        logger.warning("No PDF library available (pymupdf, pdfminer.six, pypdf) — cannot extract PDF text")
         return ""
     except Exception as exc:
-        logger.warning("PDF extraction failed for '%s': %s", filepath, exc)
+        logger.warning("pypdf extraction failed for '%s': %s", filepath, exc)
         return ""
 
 
@@ -157,8 +195,11 @@ def chunk_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) 
             boundary = space_idx + 1 if space_idx > start else end
 
         chunk = text[start:boundary].strip()
-        if chunk:
+        if chunk and len(chunk) >= 100:  # Skip fragments shorter than 100 chars
             chunks.append(chunk)
+        elif chunk and chunks:
+            # Append short fragments to the previous chunk rather than discarding
+            chunks[-1] = chunks[-1] + " " + chunk
 
         # Move forward with overlap
         start = max(boundary - overlap, start + 1)
@@ -219,6 +260,7 @@ async def ingest_document(
 
         # Step 2: chunk
         chunks = chunk_text(text)
+        logger.info("Created %d chunks for '%s' (from %d chars)", len(chunks), doc.filename, len(text))
         if not chunks:
             raise ValueError("Chunking produced no output")
 

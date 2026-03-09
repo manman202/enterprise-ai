@@ -18,7 +18,7 @@ async def ingest_bytes(
     source_id: Optional[str] = None,
     department: Optional[str] = None,
     metadata: Optional[dict] = None,
-) -> None:
+) -> int:
     """
     Create a Document record and run the full ingestion pipeline for raw bytes.
 
@@ -28,6 +28,9 @@ async def ingest_bytes(
         source_id:   UUID of the KnowledgeSource this file came from (stored in filepath)
         department:  Department this file belongs to
         metadata:    Optional extra metadata (e.g. email sender/subject)
+
+    Returns:
+        Number of chunks created (0 if ingestion failed).
     """
     from app.core.ingestion import ingest_document
     from app.db.postgres import AsyncSessionLocal
@@ -60,4 +63,9 @@ async def ingest_bytes(
 
         # Run the full ingestion pipeline (hash-based dedup happens inside)
         await ingest_document(doc=doc, content=content, db=db)
-        logger.debug("ingest_bytes: completed for %s (source=%s)", filename, source_id)
+        chunks_created = doc.chunks_count or 0
+        logger.debug(
+            "ingest_bytes: completed for %s (source=%s) — %d chunks",
+            filename, source_id, chunks_created,
+        )
+        return chunks_created

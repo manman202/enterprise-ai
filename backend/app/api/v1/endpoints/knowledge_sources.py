@@ -117,15 +117,66 @@ def _get_connector(source: KnowledgeSource):
 # ── CRUD endpoints ────────────────────────────────────────────────────────────
 
 
+@router.get("/stats")
+async def get_knowledge_stats(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+):
+    """Return aggregate stats: source counts and documents indexed."""
+    from sqlalchemy import func
+
+    from app.models.document import Document
+
+    try:
+        total_result = await db.execute(select(func.count(KnowledgeSource.id)))
+        total = total_result.scalar() or 0
+    except Exception:
+        total = 0
+
+    try:
+        active_result = await db.execute(
+            select(func.count(KnowledgeSource.id)).where(KnowledgeSource.status == "active")
+        )
+        active = active_result.scalar() or 0
+    except Exception:
+        active = 0
+
+    try:
+        last_result = await db.execute(select(func.max(KnowledgeSource.last_sync_at)))
+        last_sync = last_result.scalar()
+        last_sync = last_sync.isoformat() if last_sync else None
+    except Exception:
+        last_sync = None
+
+    try:
+        doc_result = await db.execute(
+            select(func.count(Document.id)).where(Document.status == "ingested")
+        )
+        documents_indexed = doc_result.scalar() or 0
+    except Exception:
+        documents_indexed = 0
+
+    return {
+        "total_sources": total,
+        "active_sources": active,
+        "last_sync": last_sync,
+        "documents_indexed": documents_indexed,
+    }
+
+
 @router.get("", response_model=List[KnowledgeSourceResponse])
 async def list_sources(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(get_current_admin),
 ):
     """List all knowledge sources."""
-    result = await db.execute(select(KnowledgeSource).order_by(KnowledgeSource.created_at.desc()))
-    sources = result.scalars().all()
-    return [_source_to_response(s) for s in sources]
+    try:
+        result = await db.execute(select(KnowledgeSource).order_by(KnowledgeSource.created_at.desc()))
+        sources = result.scalars().all()
+        return [_source_to_response(s) for s in sources]
+    except Exception as e:
+        logger.error("Error fetching knowledge sources: %s", e)
+        return []
 
 
 @router.get("/{source_id}", response_model=KnowledgeSourceResponse)
@@ -447,7 +498,7 @@ async def upload_files(
 
         # Ingest
         try:
-            await ingest_bytes(
+            chunks_created = await ingest_bytes(
                 content=content,
                 filename=filename,
                 source_id=source_id,
@@ -459,7 +510,7 @@ async def upload_files(
                 "size": size,
                 "status": "success",
                 "error": None,
-                "chunks_created": None,  # updated async by ingestion pipeline
+                "chunks_created": chunks_created,
             })
         except Exception as e:
             logger.error("Upload ingest failed for %s: %s", filename, e)
@@ -474,13 +525,19 @@ async def upload_files(
     succeeded = sum(1 for r in results if r["status"] == "success")
     failed = sum(1 for r in results if r["status"] in ("error", "rejected"))
 
-    # Update source stats
+    # Update source stats — BUG 2 fix: always set is_active=True on successful upload
     source.last_sync_at = datetime.utcnow()
     source.last_sync_count = succeeded
     source.last_sync_status = "success" if failed == 0 else ("partial" if succeeded > 0 else "failed")
     if succeeded > 0:
         source.status = "active"
+        source.is_active = True
+        source.last_error = None
+    elif failed > 0 and succeeded == 0:
+        source.status = "error"
+        source.last_error = f"{failed} file(s) failed to ingest"
     await db.commit()
+    await db.refresh(source)
 
     logger.info(
         "Upload: %d file(s) to source '%s' by %s — %d ok, %d failed — saved to %s",
