@@ -15,7 +15,8 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 # Default timeout for non-streaming requests (seconds)
-_TIMEOUT = 120.0
+# Mistral 7B on CPU can take 2-4 min; set well above that.
+_TIMEOUT = 300.0
 
 
 @asynccontextmanager
