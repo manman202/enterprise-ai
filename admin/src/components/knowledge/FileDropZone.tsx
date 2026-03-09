@@ -29,6 +29,26 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1_048_576).toFixed(1)} MB`
 }
 
+/** Map raw backend/network error strings to user-friendly messages. */
+function humanizeError(err: string | null | undefined): string {
+  if (!err) return ''
+  if (err.includes('Unsupported file type') || err.includes('Unsupported extension')) {
+    const m = err.match(/\.\w+/)
+    return `Unsupported type${m ? ': ' + m[0] : ''}`
+  }
+  if (err.includes('ingestion failed') || err.includes('Saved but')) return 'File saved but could not be indexed'
+  if (err.includes('50 MB') || err.includes('50MB') || err.includes('exceeds')) return 'Exceeds 50 MB limit'
+  if (
+    err.includes('fetch') ||
+    err.includes('network') ||
+    err.includes('Failed to fetch') ||
+    err.includes('NetworkError')
+  ) return 'Could not reach server — check your connection'
+  if (err.includes('Local path') && err.includes('does not exist')) return 'Server path not found'
+  // Truncate long messages
+  return err.length > 60 ? err.slice(0, 57) + '…' : err
+}
+
 function fileExt(name: string): string {
   return ('.' + (name.split('.').pop() ?? '')).toLowerCase()
 }
@@ -96,7 +116,7 @@ interface QueuedFile {
 export interface UploadResult {
   filename: string
   size: number
-  status: 'ingested' | 'rejected' | 'error'
+  status: 'success' | 'rejected' | 'error'
   error: string | null
   chunks_created: number | null
 }
@@ -269,12 +289,16 @@ export default function FileDropZone({
             prev.map((q, idx) => {
               if (idx < i || idx >= i + BATCH) return q
               const r = data.uploaded.find((u) => u.filename === q.file.name)
-              return { ...q, status: r?.status === 'ingested' ? 'done' : 'error', chunks: r?.chunks_created ?? 0, error: r?.error ?? undefined }
+              return { ...q, status: r?.status === 'success' ? 'done' : 'error', chunks: r?.chunks_created ?? 0, error: humanizeError(r?.error) }
             }),
           )
         }
       } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Upload failed'
+        const msg = e instanceof Error
+          ? (e.message.includes('fetch') || e.message.includes('network') || e.message.includes('Failed')
+              ? 'Could not reach server — check your connection'
+              : e.message)
+          : 'Upload failed'
         for (const item of batch) {
           allResults.push({ filename: item.file.name, size: item.file.size, status: 'error', error: msg, chunks_created: null })
         }
@@ -301,8 +325,8 @@ export default function FileDropZone({
 
   // ── Stats ──────────────────────────────────────────────────────────────────
 
-  const okCount = results.filter((r) => r.status === 'ingested').length
-  const errCount = results.filter((r) => r.status !== 'ingested').length
+  const okCount = results.filter((r) => r.status === 'success').length
+  const errCount = results.filter((r) => r.status !== 'success').length
   const totalChunks = results.reduce((s, r) => s + (r.chunks_created ?? 0), 0)
   const totalSize = queue.reduce((s, q) => s + q.file.size, 0)
 
@@ -573,13 +597,13 @@ export default function FileDropZone({
                       <td className="px-3 py-2">
                         <span className={[
                           'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                          r.status === 'ingested'
+                          r.status === 'success'
                             ? 'bg-green-100 text-green-700'
                             : r.status === 'rejected'
                             ? 'bg-yellow-100 text-yellow-700'
                             : 'bg-red-100 text-red-700',
                         ].join(' ')}>
-                          {r.status === 'ingested' ? (
+                          {r.status === 'success' ? (
                             <><CheckCircle size={9} /> Ingested</>
                           ) : r.status === 'rejected' ? (
                             'Rejected'
@@ -589,7 +613,13 @@ export default function FileDropZone({
                         </span>
                       </td>
                       <td className="px-3 py-2 text-gray-400">
-                        {r.chunks_created != null ? r.chunks_created : (r.error ?? '')}
+                        {r.status === 'success'
+                          ? (r.chunks_created != null ? r.chunks_created : '—')
+                          : (
+                            <span className="text-red-500 text-[10px]" title={r.error ?? ''}>
+                              {humanizeError(r.error)}
+                            </span>
+                          )}
                       </td>
                     </tr>
                   ))}

@@ -452,13 +452,14 @@ async def upload_files(
                 filename=filename,
                 source_id=source_id,
                 department=source.department or "",
+                metadata={"uploaded_by": admin.username},
             )
             results.append({
                 "filename": filename,
                 "size": size,
-                "status": "ingested",
+                "status": "success",
                 "error": None,
-                "chunks_created": None,  # chunk count is updated async in the ingestion pipeline
+                "chunks_created": None,  # updated async by ingestion pipeline
             })
         except Exception as e:
             logger.error("Upload ingest failed for %s: %s", filename, e)
@@ -466,11 +467,11 @@ async def upload_files(
                 "filename": filename,
                 "size": size,
                 "status": "error",
-                "error": str(e),
+                "error": f"Saved but ingestion failed: {e}",
                 "chunks_created": 0,
             })
 
-    succeeded = sum(1 for r in results if r["status"] == "ingested")
+    succeeded = sum(1 for r in results if r["status"] == "success")
     failed = sum(1 for r in results if r["status"] in ("error", "rejected"))
 
     # Update source stats

@@ -287,7 +287,7 @@ function SourceModal({ editing, onClose, onSaved, onToast }: ModalProps) {
   }
 
   function handleUploadDone(results: UploadResult[]) {
-    const ok = results.filter((r) => r.status === 'ingested').length
+    const ok = results.filter((r) => r.status === 'success').length
     onToast('success', `${ok} file${ok !== 1 ? 's' : ''} ingested into "${name}"`)
     if (createdSource) onSaved(createdSource)
     else onClose()
@@ -741,8 +741,8 @@ export default function KnowledgePage() {
   }
 
   function handleUploadDone(results: UploadResult[]) {
-    const ok = results.filter((r) => r.status === 'ingested').length
-    const err = results.filter((r) => r.status !== 'ingested').length
+    const ok = results.filter((r) => r.status === 'success').length
+    const err = results.filter((r) => r.status !== 'success').length
     if (err === 0) {
       toast('success', `${ok} file${ok !== 1 ? 's' : ''} ingested successfully`)
     } else {
