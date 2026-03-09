@@ -25,7 +25,6 @@ import {
   KnowledgeSource, KnowledgeSourceCreate, KnowledgeStats, SyncHistoryEntry, SourceType,
   knowledgeSourcesApi,
 } from '@/api/knowledge_sources'
-import { knowledgeApi } from '@/api/admin'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/layout/PageHeader'
